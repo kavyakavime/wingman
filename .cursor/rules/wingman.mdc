@@ -1,0 +1,45 @@
+---
+description: Wingman hackathon project context, architecture, and security rules
+alwaysApply: true
+---
+
+# Wingman
+
+**One-liner:** Test cold outbound on a digital twin of your real audience before you send a single one.
+
+## Pipeline
+
+1. **Fiber AI** — ICP in plain English → real live companies/people
+2. **Orange Slice** — Enrich sample into personas (funding, pain signals, intent score)
+3. **Custom swarm** (OpenAI GPT-4o, our code, NOT a fork) — persona agents react in character + reason + segment tag
+4. **Live 3D graph** — react-force-graph-3d + bloom, clustered by segment, sentiment color, streams via Convex
+5. **Score card** — predicted reply rate + top objection per segment
+6. **Rewrite** — Cursor SDK (@cursor/sdk, composer-2, OpenAI fallback) fixes top objection, swarm re-runs once
+7. **Send** — Orange Slice one-click to opt-in list
+
+## Stack roles
+
+- **Convex** — reactive backend; every reaction writes live, frontend subscribes
+- **Next.js + Vercel** — deployed from hour one
+- Full spec: `PROJECT_SPEC.md`
+
+## Security (public repo)
+
+- API keys ONLY in Convex env: `npx convex env set KEY value`
+- Never bundle keys in client code or commit `.env*`
+- Keys: `FIBER_API_KEY`, `ORANGESLICE_API_KEY`, `OPENAI_API_KEY`, `CURSOR_API_KEY`
+- Client only needs `NEXT_PUBLIC_CONVEX_URL` in `.env.local`
+- Before commits: confirm no `.env*` files staged
+
+## Code layout
+
+- `/convex` — functions
+- `/app` — routes
+- `/components` — UI
+- `/lib` — fiber.ts, orangeslice.ts, cursorSdk.ts, openai.ts
+
+## Build rules
+
+- Swarm engine is custom code inspired by mirofish, not forked
+- Do not hallucinate API shapes — implement from real docs when wiring integrations
+- Minimize scope; match existing conventions
