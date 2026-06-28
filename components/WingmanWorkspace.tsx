@@ -383,9 +383,16 @@ export function WingmanWorkspace() {
             Wingman
           </span>
           <span className="hidden h-4 w-px shrink-0 bg-stone-700 sm:block" aria-hidden />
-          <p className="hidden min-w-0 truncate text-sm font-normal leading-snug tracking-wide text-stone-400 sm:block">
-            Test your GTM on digital twins. Only ship what wins.
-          </p>
+          <div className="hidden min-w-0 items-center gap-2.5 sm:flex">
+            <p className="min-w-0 truncate text-sm font-normal leading-snug tracking-wide text-stone-400">
+              Test your GTM on digital twins. Only ship what wins.
+            </p>
+            <span
+              className="h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]"
+              title="Live simulation"
+              aria-label="Live simulation"
+            />
+          </div>
         </div>
         <Button
           type="button"

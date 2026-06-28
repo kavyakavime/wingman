@@ -5,7 +5,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { MOCK_LEADS, type MockLeadRow } from "@/lib/mockLeads";
 import type { LeadRow } from "./LeadSpreadsheet";
 
-const gridLine = "border-white/30";
+const gridLine = "border-stone-400/25";
 const th =
   `border-r ${gridLine} px-4 py-3 text-left font-semibold uppercase tracking-wide text-brand-blue-light/90`;
 const td =
@@ -88,7 +88,7 @@ function RecentActivityCell({
     <td className={`${td} max-w-[200px] align-top text-xs text-stone-500`}>
       <div
         className={`relative min-h-[2.5rem] rounded-md border border-transparent pr-5 ${
-          expanded ? "border-white/10 bg-stone-900/50 p-2" : ""
+          expanded ? "border-stone-400/15 bg-stone-900/50 p-2" : ""
         }`}
       >
         <p

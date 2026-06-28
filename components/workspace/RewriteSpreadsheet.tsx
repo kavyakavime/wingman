@@ -8,7 +8,7 @@ import { SEGMENT_LABELS, SEGMENT_STYLES, type PersonaSegment } from "@/lib/segme
 import { Button } from "../ui/Button";
 import type { LeadRow } from "./LeadSpreadsheet";
 
-const gridLine = "border-white/30";
+const gridLine = "border-stone-400/25";
 const th =
   `border-r ${gridLine} px-4 py-3 text-left font-semibold uppercase tracking-wide text-brand-blue-light/90`;
 const td =
@@ -26,7 +26,7 @@ function EmailPreviewCell({ subject, body }: { subject: string; body: string }) 
       <p className="mb-1 font-medium text-stone-300">{subject}</p>
       <div
         className={`relative min-h-[2.5rem] rounded-md border border-transparent pr-5 ${
-          expanded ? "border-white/10 bg-stone-900/50 p-2" : ""
+          expanded ? "border-stone-400/15 bg-stone-900/50 p-2" : ""
         }`}
       >
         <p
