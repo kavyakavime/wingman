@@ -10,6 +10,7 @@
     "convex:dev": "convex dev",
     "test:cursor-sdk": "npx tsx scripts/test-cursor-sdk.mts",
     "test:orangeslice-send": "npx tsx scripts/test-orangeslice-send.mts",
+    "test:orangeslice-paths": "npx tsx scripts/test-orangeslice-paths.mts",
     "test:gmail-direct": "npx tsx scripts/test-gmail-direct.mts",
     "connect:gmail": "npx tsx scripts/connect-gmail.mts"
   },

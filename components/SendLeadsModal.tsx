@@ -31,9 +31,8 @@ type LeadSendRow = {
   sending: boolean;
   sent: boolean;
   error: string | null;
+  via: "managed_email" | "gmail" | "gmail_direct" | null;
 };
-
-const DEFAULT_FROM = "Connected Gmail (Convex env)";
 
 export function SendLeadsModal({
   open,
@@ -42,7 +41,14 @@ export function SendLeadsModal({
   simulationDraft,
 }: SendLeadsModalProps) {
   const rewrites = useQuery(api.segmentRewrites.listSegmentRewrites);
+  const sendConfig = useQuery(api.sendConfig.getSendConfig);
   const sendLeadOutreach = useAction(api.sendActions.sendLeadOutreach);
+
+  const fromLabel = sendConfig?.fromEmail
+    ? sendConfig.fromEmail
+    : sendConfig?.smtpConfigured
+      ? "Gmail SMTP"
+      : "Not configured — set GMAIL_USER in Convex env";
 
   const rewriteBySegment = useMemo(() => {
     return new Map(
@@ -66,6 +72,7 @@ export function SendLeadsModal({
         sending: false,
         sent: false,
         error: null,
+        via: null,
       };
     });
   }, [leads, rewriteBySegment, simulationDraft]);
@@ -98,13 +105,18 @@ export function SendLeadsModal({
 
     updateRow(leadId, { sending: true, error: null });
     try {
-      await sendLeadOutreach({
+      const result = await sendLeadOutreach({
         leadId,
         toEmail,
         subject,
         body,
       });
-      updateRow(leadId, { sending: false, sent: true, error: null });
+      updateRow(leadId, {
+        sending: false,
+        sent: true,
+        error: null,
+        via: result.via ?? null,
+      });
     } catch (error) {
       updateRow(leadId, {
         sending: false,
@@ -182,7 +194,10 @@ export function SendLeadsModal({
                       {row.source === "rewrite" ? "Rewrite" : "Simulation draft"}
                     </span>
                     {row.sent ? (
-                      <span className="text-xs font-medium text-emerald-600">Sent</span>
+                      <span className="text-xs font-medium text-emerald-600">
+                        Sent
+                        {row.via === "gmail_direct" ? " via Gmail" : null}
+                      </span>
                     ) : null}
                   </div>
                 </div>
@@ -203,7 +218,7 @@ export function SendLeadsModal({
                     From
                     <input
                       type="text"
-                      value={DEFAULT_FROM}
+                      value={fromLabel}
                       readOnly
                       tabIndex={-1}
                       className="mt-1 w-full cursor-not-allowed rounded-lg border border-stone-800 bg-stone-900/40 px-3 py-2 text-sm text-stone-500"

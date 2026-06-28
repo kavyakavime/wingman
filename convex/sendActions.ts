@@ -7,6 +7,7 @@ import { DEMO_RECIPIENTS } from "../lib/demoRecipients";
 import { inferLeadSegment } from "../lib/inferSegment";
 import { parseRewriteDraft } from "../lib/parseRewriteDraft";
 import { OrangeSliceApiError, sendOutreach } from "../lib/orangeslice";
+import { gmailDirectConfigured } from "../lib/gmailDirect";
 import type { PersonaSegment } from "../lib/segments";
 
 type SendResult = {
@@ -34,9 +35,10 @@ export const sendWinningVariants = action({
     }
 
     const apiKey = process.env.ORANGESLICE_API_KEY;
-    if (!apiKey) {
+    if (!gmailDirectConfigured() && !apiKey) {
       throw new Error(
-        "ORANGESLICE_API_KEY is not set in Convex env. Run: npx convex env set ORANGESLICE_API_KEY your_key",
+        "Email send is not configured. Set GMAIL_USER + GMAIL_APP_PASSWORD in Convex env " +
+          "(Google app password), then redeploy.",
       );
     }
 
@@ -163,7 +165,11 @@ export const sendLeadOutreach = action({
     subject: v.string(),
     body: v.string(),
   },
-  handler: async (ctx, args): Promise<{ success: boolean; messageId: string | null }> => {
+  handler: async (ctx, args): Promise<{
+    success: boolean;
+    messageId: string | null;
+    via?: "managed_email" | "gmail" | "gmail_direct";
+  }> => {
     const toEmail = args.toEmail.trim();
     const subject = args.subject.trim();
     const body = args.body.trim();
@@ -179,9 +185,10 @@ export const sendLeadOutreach = action({
     }
 
     const apiKey = process.env.ORANGESLICE_API_KEY;
-    if (!apiKey) {
+    if (!gmailDirectConfigured() && !apiKey) {
       throw new Error(
-        "ORANGESLICE_API_KEY is not set in Convex env. Run: npx convex env set ORANGESLICE_API_KEY your_key",
+        "Email send is not configured. Set GMAIL_USER + GMAIL_APP_PASSWORD in Convex env " +
+          "(Google app password), then redeploy.",
       );
     }
 
@@ -216,7 +223,11 @@ export const sendLeadOutreach = action({
           },
         ],
       });
-      return { success: true, messageId: sendResult.messageId ?? null };
+      return {
+        success: true,
+        messageId: sendResult.messageId ?? null,
+        via: sendResult.via,
+      };
     } catch (error) {
       const message =
         error instanceof OrangeSliceApiError

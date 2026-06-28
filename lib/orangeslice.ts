@@ -272,20 +272,6 @@ function isIntegrationNotConnected(message: string): boolean {
   );
 }
 
-function isManagedEmailUnavailable(message: string): boolean {
-  const lower = message.toLowerCase();
-  return lower.includes("not found") || message.includes("404");
-}
-
-function isOrangeSliceGmailBroken(message: string): boolean {
-  const lower = message.toLowerCase();
-  return (
-    lower.includes("composio") ||
-    isIntegrationNotConnected(message) ||
-    lower.includes("/execute/integration")
-  );
-}
-
 async function sendViaOrangeSliceGmail(
   to: string,
   subject: string,
@@ -344,15 +330,9 @@ export async function sendOutreach(
   toEmail: string,
   subject: string,
   body: string,
-  apiKey: string,
+  apiKey?: string,
 ): Promise<{ messageId?: string; via: "managed_email" | "gmail" | "gmail_direct" }> {
   const to = toEmail.trim();
-  if (!apiKey.trim()) {
-    throw new OrangeSliceApiError(
-      "ORANGESLICE_API_KEY is not configured. Set it with: npx convex env set ORANGESLICE_API_KEY your_key",
-      "missing_api_key",
-    );
-  }
   if (!to || !to.includes("@")) {
     throw new OrangeSliceApiError(
       `Invalid recipient email: "${toEmail}"`,
@@ -366,70 +346,81 @@ export async function sendOutreach(
     throw new OrangeSliceApiError("Body cannot be empty.", "api_error");
   }
 
+  const trimmedSubject = subject.trim();
+  const trimmedBody = body.trim();
+
+  // Primary: direct Gmail SMTP (one-click send in prod)
+  if (gmailDirectConfigured()) {
+    try {
+      const direct = await sendViaGmailDirect(to, trimmedSubject, trimmedBody);
+      return {
+        messageId: direct.messageId,
+        via: "gmail_direct" as const,
+      };
+    } catch (error) {
+      if (error instanceof GmailDirectError) {
+        throw new OrangeSliceApiError(error.message, "api_error");
+      }
+      throw error;
+    }
+  }
+
+  if (!apiKey?.trim()) {
+    throw new OrangeSliceApiError(
+      "GMAIL_USER and GMAIL_APP_PASSWORD are not set in Convex env. " +
+        "Create a Google app password, then: npx convex env set GMAIL_USER you@gmail.com && " +
+        "npx convex env set GMAIL_APP_PASSWORD 'xxxx xxxx xxxx xxxx'",
+      "missing_api_key",
+    );
+  }
+
+  const html = plainTextToHtml(trimmedBody);
+  const pathErrors: string[] = [];
+
   try {
     return await withApiKey(apiKey.trim(), async () => {
-      const html = plainTextToHtml(body);
-      const trimmedSubject = subject.trim();
-      const trimmedBody = body.trim();
+      try {
+        const result = (await post("/execute/email", {
+          to,
+          subject: trimmedSubject,
+          html,
+        })) as { id?: string; messageId?: string };
+        return {
+          messageId: result.messageId ?? result.id,
+          via: "managed_email" as const,
+        };
+      } catch (error) {
+        pathErrors.push(formatPathError("Orange Slice /execute/email", error));
+      }
 
-      // Primary: Orange Slice Gmail (docs/integrations/gmail/sendEmail.md)
       try {
         const gmailSend = await sendViaOrangeSliceGmail(to, trimmedSubject, trimmedBody);
         return {
           messageId: gmailSend.messageId,
           via: "gmail" as const,
         };
-      } catch (gmailError) {
-        const gmailMessage =
-          gmailError instanceof Error ? gmailError.message : String(gmailError);
-
-        // Fallback 1: managed transactional sender (docs/services/email/send.ts)
-        if (!isIntegrationNotConnected(gmailMessage)) {
-          try {
-            const result = (await post("/execute/email", {
-              to,
-              subject: trimmedSubject,
-              html,
-            })) as { id?: string; messageId?: string };
-            return {
-              messageId: result.messageId ?? result.id,
-              via: "managed_email" as const,
-            };
-          } catch (managedError) {
-            const managedMessage =
-              managedError instanceof Error ? managedError.message : String(managedError);
-            if (!isManagedEmailUnavailable(managedMessage)) {
-              throw managedError;
-            }
-          }
-        }
-
-        // Fallback 2: direct Gmail SMTP when Orange Slice Composio bridge is down
-        if (isOrangeSliceGmailBroken(gmailMessage) && gmailDirectConfigured()) {
-          const direct = await sendViaGmailDirect(to, trimmedSubject, trimmedBody);
-          return {
-            messageId: direct.messageId,
-            via: "gmail_direct" as const,
-          };
-        }
-
-        const connectHint =
-          "Connect Gmail: `npm run connect:gmail`. " +
-          "If Orange Slice still fails (Composio 401), set GMAIL_USER + GMAIL_APP_PASSWORD in Convex env — " +
-          "Google Account → Security → App passwords → create one for Wingman, then: " +
-          "`npx convex env set GMAIL_USER you@gmail.com` and `npx convex env set GMAIL_APP_PASSWORD 'xxxx xxxx xxxx xxxx'`.";
-
-        if (isIntegrationNotConnected(gmailMessage)) {
-          throw new OrangeSliceApiError(
-            `${gmailMessage} ${connectHint}`,
-            "integration_not_connected",
-          );
-        }
-
-        throw gmailError;
+      } catch (error) {
+        pathErrors.push(formatPathError("Orange Slice Gmail integration", error));
       }
+
+      throw new OrangeSliceApiError(
+        [
+          "Could not send email — Orange Slice send endpoints are unavailable.",
+          ...pathErrors,
+          "Set Gmail SMTP in Convex env:",
+          "npx convex env set GMAIL_USER you@gmail.com",
+          "npx convex env set GMAIL_APP_PASSWORD 'xxxx xxxx xxxx xxxx'",
+        ].join(" "),
+        "api_error",
+      );
     });
   } catch (error) {
+    if (error instanceof OrangeSliceApiError) throw error;
     throw parsePostError(error);
   }
+}
+
+function formatPathError(label: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `${label}: ${message.replace(/\s+/g, " ").slice(0, 220)}`;
 }

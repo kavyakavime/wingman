@@ -17,6 +17,7 @@ import type * as rewriteActions from "../rewriteActions.js";
 import type * as seedDemo from "../seedDemo.js";
 import type * as segmentRewrites from "../segmentRewrites.js";
 import type * as sendActions from "../sendActions.js";
+import type * as sendConfig from "../sendConfig.js";
 import type * as sentLog from "../sentLog.js";
 import type * as swarmActions from "../swarmActions.js";
 import type * as swarmHelpers from "../swarmHelpers.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   seedDemo: typeof seedDemo;
   segmentRewrites: typeof segmentRewrites;
   sendActions: typeof sendActions;
+  sendConfig: typeof sendConfig;
   sentLog: typeof sentLog;
   swarmActions: typeof swarmActions;
   swarmHelpers: typeof swarmHelpers;
