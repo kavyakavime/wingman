@@ -27,7 +27,7 @@ export function createGlowNode(
     new THREE.MeshBasicMaterial({
       color: coreColor,
       transparent: true,
-      opacity: isAmbient ? 0.35 : 0.98,
+      opacity: isAmbient ? 0.58 : 0.98,
       depthWrite: !isAmbient,
     }),
   );
@@ -39,7 +39,7 @@ export function createGlowNode(
     new THREE.MeshBasicMaterial({
       color: coreColor,
       transparent: true,
-      opacity: isAmbient ? 0.06 : 0.1 + emissiveIntensity * 0.02,
+      opacity: isAmbient ? 0.14 : 0.1 + emissiveIntensity * 0.02,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     }),
@@ -52,7 +52,7 @@ export function createGlowNode(
     new THREE.MeshBasicMaterial({
       color: coreColor,
       transparent: true,
-      opacity: isAmbient ? 0.03 : 0.04,
+      opacity: isAmbient ? 0.08 : 0.04,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     }),

@@ -121,6 +121,29 @@ function channelLabel(channel: OutreachChannel): string {
   return "LinkedIn DM";
 }
 
+function CardDismissButton({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onDismiss();
+      }}
+      className="shrink-0 rounded-md p-1 text-stone-500 transition hover:bg-stone-800 hover:text-stone-300"
+      aria-label="Dismiss"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path
+          d="M18 6L6 18M6 6l12 12"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
+    </button>
+  );
+}
+
 function SwarmResultsCard({
   label,
   summary,
@@ -130,10 +153,10 @@ function SwarmResultsCard({
   variant,
   onFixIt,
   onSend,
+  onDismiss,
   isGenerating,
   isSwarmRunning,
   fixItUsed,
-  hasRound3,
 }: {
   label: string;
   summary: string;
@@ -143,22 +166,25 @@ function SwarmResultsCard({
   variant: "baseline" | "after_rewrite";
   onFixIt?: () => void;
   onSend?: () => void;
+  onDismiss?: () => void;
   isGenerating?: boolean;
   isSwarmRunning?: boolean;
   fixItUsed?: boolean;
-  hasRound3?: boolean;
 }) {
   return (
     <div className="w-full max-w-full space-y-3 rounded-xl border border-stone-800 bg-cream-deep p-4 shadow-sm">
-      <div>
-        <p className="text-sm font-semibold text-stone-100">{label}</p>
-        {overall !== null ? (
-          <p className="mt-1 text-xs text-stone-500">
-            Overall projected reply rate:{" "}
-            <span className="font-semibold tabular-nums text-stone-200">{overall}%</span>
-            <span className="ml-1 text-stone-400">(cold outbound baseline — not a promise)</span>
-          </p>
-        ) : null}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-stone-100">{label}</p>
+          {overall !== null ? (
+            <p className="mt-1 text-xs text-stone-500">
+              Overall projected reply rate:{" "}
+              <span className="font-semibold tabular-nums text-stone-200">{overall}%</span>
+              <span className="ml-1 text-stone-400">(cold outbound baseline — not a promise)</span>
+            </p>
+          ) : null}
+        </div>
+        {onDismiss ? <CardDismissButton onDismiss={onDismiss} /> : null}
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
         {SEGMENT_ORDER.map((segment) => {
@@ -231,30 +257,29 @@ function SwarmResultsCard({
 
 function RewriteReadyCard({
   onReswarm,
+  onDismiss,
   isRetesting,
-  hasRound3,
   rewriteCount,
 }: {
   onReswarm: () => void;
+  onDismiss?: () => void;
   isRetesting: boolean;
-  hasRound3: boolean;
   rewriteCount: number;
 }) {
   return (
     <div className="w-full max-w-full space-y-3 rounded-xl border border-stone-800 bg-cream-deep p-4 shadow-sm">
-      <div>
-        <p className="text-sm font-semibold text-stone-100">Rewrites ready</p>
-        <p className="mt-1 text-xs leading-relaxed text-stone-500">
-          {rewriteCount > 0
-            ? `${rewriteCount} segment variant${rewriteCount === 1 ? "" : "s"} generated with Cursor SDK (or OpenAI fallback). Each addresses its top objection with cited signals.`
-            : "Segment variants are ready. Re-swarm to test them on your selected digital twins."}
-        </p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-stone-100">Rewrites ready</p>
+          <p className="mt-1 text-xs leading-relaxed text-stone-500">
+            {rewriteCount > 0
+              ? `${rewriteCount} segment variant${rewriteCount === 1 ? "" : "s"} generated with Cursor SDK (or OpenAI fallback). Each addresses its top objection with cited signals.`
+              : "Segment variants are ready. Re-swarm to test them on your selected digital twins."}
+          </p>
+        </div>
+        {onDismiss ? <CardDismissButton onDismiss={onDismiss} /> : null}
       </div>
-      <Button
-        type="button"
-        onClick={onReswarm}
-        disabled={isRetesting || hasRound3}
-      >
+      <Button type="button" onClick={onReswarm} disabled={isRetesting}>
         {isRetesting ? "Re-swarming…" : "Re-swarm"}
       </Button>
     </div>
@@ -396,8 +421,6 @@ export function ChatWorkflow({
     onSwarmActiveChange(isStreaming);
   }, [isStreaming, onSwarmActiveChange]);
 
-  const hasRound3 = swarmReactions.some((r) => (r.round ?? 1) === 3);
-
   const fixItUsed = useMemo(() => {
     let lastBaselineIdx = -1;
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -415,6 +438,10 @@ export function ChatWorkflow({
 
   const appendMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => [...prev, msg]);
+  }, []);
+
+  const dismissMessage = useCallback((messageId: string) => {
+    setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
   }, []);
 
   useEffect(() => {
@@ -541,7 +568,7 @@ export function ChatWorkflow({
       kind: "swarm_results",
       variant: "after_rewrite",
       label: "After rewrite — segment scores",
-      summary: "Numbers moved because the message actually got better. One click to send for real.",
+      summary: "Peer-influenced retest on the same selected twins — apples-to-apples vs the baseline swarm.",
       scores,
       overall,
       beforeScores: baselineScores,
@@ -687,7 +714,10 @@ export function ChatWorkflow({
       content: "Fix it — rewrite per segment with Cursor SDK",
     });
     try {
-      await generateRewrites({ originalDraft: activeDraft.trim() });
+      await generateRewrites({
+        originalDraft: activeDraft.trim(),
+        leadIds: selectedLeadIds,
+      });
       appendMessage({
         id: uid(),
         role: "assistant",
@@ -708,7 +738,6 @@ export function ChatWorkflow({
     setIsRetesting(true);
     onGoToSwarm();
     retestResultsSentRef.current = false;
-    setExpectedReactionCount(swarmReactions.length + selectedLeadIds.length);
     appendMessage({
       id: uid(),
       role: "user",
@@ -719,10 +748,10 @@ export function ChatWorkflow({
       id: uid(),
       role: "assistant",
       kind: "text",
-      content: `Re-simulating ${selectedLeadIds.length} digital twin${selectedLeadIds.length === 1 ? "" : "s"} with segment-specific rewrites…`,
+      content: `Re-simulating ${selectedLeadIds.length} digital twin${selectedLeadIds.length === 1 ? "" : "s"} with segment-specific rewritten emails…`,
     });
     try {
-      await retestVariants({});
+      await retestVariants({ leadIds: selectedLeadIds });
       setAwaitingRetestScores(true);
     } catch (error) {
       setClientError(
@@ -806,13 +835,30 @@ export function ChatWorkflow({
                     className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[92%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                      className={`relative max-w-[92%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                         msg.role === "user"
                           ? "bg-brand-blue text-white"
-                          : "border border-stone-800 bg-cream-deep text-stone-200"
+                          : "border border-stone-800 bg-cream-deep pr-10 text-stone-200"
                       }`}
                     >
                       {msg.content}
+                      {msg.role === "assistant" ? (
+                        <button
+                          type="button"
+                          onClick={() => dismissMessage(msg.id)}
+                          className="absolute right-2 top-2 rounded-md p-0.5 text-stone-500 transition hover:bg-stone-800 hover:text-stone-300"
+                          aria-label="Dismiss message"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+                            <path
+                              d="M18 6L6 18M6 6l12 12"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -831,8 +877,8 @@ export function ChatWorkflow({
                   <div key={msg.id} className="flex justify-start">
                     <RewriteReadyCard
                       onReswarm={handleReswarm}
+                      onDismiss={() => dismissMessage(msg.id)}
                       isRetesting={isRetesting}
-                      hasRound3={hasRound3}
                       rewriteCount={rewrites?.length ?? 0}
                     />
                   </div>
@@ -851,10 +897,10 @@ export function ChatWorkflow({
                       variant={msg.variant}
                       onFixIt={msg.variant === "baseline" ? handleFixIt : undefined}
                       onSend={onOpenSendModal}
+                      onDismiss={() => dismissMessage(msg.id)}
                       isGenerating={isGenerating}
                       isSwarmRunning={isSwarmRunning}
                       fixItUsed={fixItUsed}
-                      hasRound3={hasRound3}
                     />
                   </div>
                 );
@@ -917,7 +963,7 @@ export function ChatWorkflow({
         ) : (
           <>
             {chatMode === "simulation" ? (
-              <div className="mt-3 flex flex-wrap gap-1.5">
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 {(
                   [
                     ["email", "Email"],
@@ -938,6 +984,16 @@ export function ChatWorkflow({
                     {label}
                   </button>
                 ))}
+                {channel ? (
+                  <button
+                    type="button"
+                    onClick={() => setChannel(null)}
+                    className="rounded-lg border border-stone-800 px-2 py-1 text-[11px] text-stone-500 transition hover:border-stone-700 hover:text-stone-300"
+                    aria-label="Clear channel selection"
+                  >
+                    ✕
+                  </button>
+                ) : null}
               </div>
             ) : null}
 

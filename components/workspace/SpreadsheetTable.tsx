@@ -49,9 +49,9 @@ function EnrichmentBadge({
   return <span className="text-xs text-brand-blue-light/70">Pending</span>;
 }
 
-function ExpandActivityIcon({ expanded }: { expanded: boolean }) {
+function ExpandCellIcon({ expanded }: { expanded: boolean }) {
   return (
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
       {expanded ? (
         <path
           d="M8 14l4-4 4 4"
@@ -73,16 +73,28 @@ function ExpandActivityIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-function RecentActivityCell({
-  activity,
+function LinkedInIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 114.126 0 2.063 2.063 0 01-2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+    </svg>
+  );
+}
+
+function ExpandableTextCell({
+  text,
   loading,
+  emptyLabel = "—",
+  ariaLabel,
 }: {
-  activity: string | null | undefined;
+  text: string | null | undefined;
   loading?: boolean;
+  emptyLabel?: string;
+  ariaLabel: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const display = loading ? "…" : (activity?.trim() || "—");
-  const canExpand = !loading && display !== "—";
+  const display = loading ? "…" : (text?.trim() || emptyLabel);
+  const canExpand = !loading && display !== emptyLabel;
 
   return (
     <td className={`${td} max-w-[200px] align-top text-xs text-stone-500`}>
@@ -104,15 +116,47 @@ function RecentActivityCell({
           <button
             type="button"
             onClick={() => setExpanded((open) => !open)}
-            className="absolute bottom-0 right-0 flex h-4 w-4 items-center justify-center rounded-sm bg-stone-800/95 text-stone-400 shadow-sm ring-1 ring-white/10 transition hover:bg-stone-700 hover:text-stone-100"
-            aria-label={expanded ? "Collapse recent activity" : "Expand recent activity"}
+            className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-sm bg-stone-800/95 text-stone-400 shadow-sm ring-1 ring-stone-400/20 transition hover:bg-stone-700 hover:text-stone-100"
+            aria-label={expanded ? `Collapse ${ariaLabel}` : `Expand ${ariaLabel}`}
             aria-expanded={expanded}
           >
-            <ExpandActivityIcon expanded={expanded} />
+            <ExpandCellIcon expanded={expanded} />
           </button>
         ) : null}
       </div>
     </td>
+  );
+}
+
+function RecentActivityCell({
+  activity,
+  loading,
+}: {
+  activity: string | null | undefined;
+  loading?: boolean;
+}) {
+  return (
+    <ExpandableTextCell
+      text={activity}
+      loading={loading}
+      ariaLabel="recent activity"
+    />
+  );
+}
+
+function PainSignalCell({
+  painSignal,
+  loading,
+}: {
+  painSignal: string | null | undefined;
+  loading?: boolean;
+}) {
+  return (
+    <ExpandableTextCell
+      text={painSignal}
+      loading={loading}
+      ariaLabel="pain signal"
+    />
   );
 }
 
@@ -199,9 +243,7 @@ export function SpreadsheetTable({
                     {lead.locality}
                   </td>
                   <RecentActivityCell activity={lead.recentActivity} />
-                  <td className={`${td} max-w-[160px] truncate text-xs text-stone-500`}>
-                    {lead.painSignal}
-                  </td>
+                  <PainSignalCell painSignal={lead.painSignal} />
                   <td className={`${td} border-r-0`}>
                     <span className="rounded-full bg-stone-700/60 px-2 py-0.5 text-[11px] font-medium text-stone-500">
                       Preview
@@ -241,9 +283,11 @@ export function SpreadsheetTable({
                             href={lead.linkedinUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="shrink-0 text-[10px] font-medium text-brand-blue-light hover:underline"
+                            className="shrink-0 rounded p-0.5 text-brand-blue-light transition hover:bg-brand-blue/15 hover:text-white"
+                            aria-label={`${lead.personName ?? "Lead"} on LinkedIn`}
+                            title="LinkedIn profile"
                           >
-                            in
+                            <LinkedInIcon />
                           </a>
                         ) : null}
                       </div>
@@ -270,13 +314,14 @@ export function SpreadsheetTable({
                       activity={lead.recentActivity}
                       loading={lead.enrichmentStatus === "loading"}
                     />
-                    <td
-                      className={`${td} max-w-[160px] truncate text-xs`}
-                      title={lead.painSignal ?? undefined}
-                    >
-                      {lead.painSignal ??
-                        (lead.enrichmentStatus === "complete" ? "—" : "…")}
-                    </td>
+                    <PainSignalCell
+                      painSignal={lead.painSignal}
+                      loading={
+                        lead.enrichmentStatus !== "complete" &&
+                        lead.enrichmentStatus !== "error" &&
+                        !lead.painSignal
+                      }
+                    />
                     <td className={`${td} border-r-0`}>
                       <EnrichmentBadge
                         status={lead.enrichmentStatus}

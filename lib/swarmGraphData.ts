@@ -77,9 +77,9 @@ export const IDLE_GRAPH_COLOR = "#c9c0a0";
 export const IDLE_NODE_VAL = 4;
 export const IDLE_EMISSIVE = 0.28;
 
-export const AMBIENT_NODE_COLOR = "#5a5668";
-export const AMBIENT_NODE_VAL = 1;
-export const AMBIENT_EMISSIVE = 0.08;
+export const AMBIENT_NODE_COLOR = "#c8c4d4";
+export const AMBIENT_NODE_VAL = 1.2;
+export const AMBIENT_EMISSIVE = 0.18;
 
 /** Deep void — reference aesthetic. */
 export const SWARM_GRAPH_BG = "#040408";
@@ -258,11 +258,17 @@ export function pickReactionsForRound(
   return [...byLead.values()];
 }
 
-/** Baseline display: round 2 when present, else round 1 per lead. */
+export type SwarmDisplayRound = 1 | 2 | 3;
+
+/** Baseline display: round 2 when present, else round 1 per lead. Round 3 = rewritten email retest. */
 export function pickDisplayReactions(
   reactions: SwarmReactionRow[],
-  displayRound: 1 | 2 = 2,
+  displayRound: SwarmDisplayRound = 2,
 ): SwarmReactionRow[] {
+  if (displayRound === 3) {
+    return pickReactionsForRound(reactions, 3);
+  }
+
   const round1ByLead = new Map<string, SwarmReactionRow>();
   const round2ByLead = new Map<string, SwarmReactionRow>();
 
@@ -289,29 +295,37 @@ export function pickDisplayReactions(
 export function countReactionsByRound(
   reactions: SwarmReactionRow[] | undefined,
   personaCount: number,
-): { round1: number; round2: number; personaCount: number } {
+): { round1: number; round2: number; round3: number; personaCount: number } {
   if (!reactions) {
-    return { round1: 0, round2: 0, personaCount };
+    return { round1: 0, round2: 0, round3: 0, personaCount };
   }
   let round1 = 0;
   let round2 = 0;
+  let round3 = 0;
   for (const reaction of reactions) {
-    if ((reaction.round ?? 1) === 2) round2 += 1;
+    const round = reaction.round ?? 1;
+    if (round === 3) round3 += 1;
+    else if (round === 2) round2 += 1;
     else round1 += 1;
   }
-  return { round1, round2, personaCount };
+  return { round1, round2, round3, personaCount };
 }
 
 export function buildSwarmGraphData(
   personas: GraphPersonaRow[],
   reactions: SwarmReactionRow[],
-  displayRound: 1 | 2 = 2,
+  displayRound: SwarmDisplayRound = 2,
   ambientLeads: AmbientLeadRow[] = [],
 ): SwarmGraphData {
   const reactionByLead = new Map(
     reactions.map((reaction) => [reaction.leadId, reaction]),
   );
-  const hasRound2 = reactions.some((reaction) => (reaction.round ?? 1) === 2);
+  const hasPeerRound =
+    displayRound === 2
+      ? reactions.some((reaction) => (reaction.round ?? 1) === 2)
+      : displayRound === 3
+        ? reactions.some((reaction) => (reaction.round ?? 1) === 3)
+        : false;
 
   const segmentCounts: Record<PersonaSegment, number> = {
     scaled: 0,
@@ -417,7 +431,7 @@ export function buildSwarmGraphData(
           color: a.sentiment
             ? SENTIMENT_GRAPH_COLORS[a.sentiment]
             : SEGMENT_GRAPH_COLORS[a.segment],
-          peerActivated: displayRound === 2 && hasRound2 && reactions.length > 0,
+          peerActivated: (displayRound === 2 || displayRound === 3) && hasPeerRound && reactions.length > 0,
         });
       }
     }
@@ -452,7 +466,7 @@ export function buildSwarmGraphData(
 /** Force sim tuning — activeCount excludes ambient population nodes. */
 export function graphForceSettings(
   activeCount: number,
-  displayRound: 1 | 2 = 1,
+  displayRound: SwarmDisplayRound = 1,
 ): {
   charge: number;
   linkDistance: number;

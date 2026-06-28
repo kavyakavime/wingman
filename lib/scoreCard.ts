@@ -23,6 +23,8 @@ export type SegmentScore = {
   predictedReplyRate: number | null;
   /** citedSignal(s) from the most negative sentiment tier in this segment. */
   topSignals: string[];
+  /** Sentiment tier those topSignals came from. */
+  dominantSentiment: SwarmSentiment | null;
   personaCount: number;
 };
 
@@ -48,6 +50,7 @@ export function computeSegmentScores(reactions: SwarmReactionRow[]): SegmentScor
         segment,
         predictedReplyRate: null,
         topSignals: [],
+        dominantSentiment: null,
         personaCount: 0,
       };
     }
@@ -62,15 +65,21 @@ export function computeSegmentScores(reactions: SwarmReactionRow[]): SegmentScor
     const minNegativity = Math.min(
       ...inSegment.map((r) => SENTIMENT_NEGATIVITY[r.sentiment]),
     );
-    const topSignals = inSegment
-      .filter((r) => SENTIMENT_NEGATIVITY[r.sentiment] === minNegativity)
+    const priorityReactions = inSegment.filter(
+      (r) => SENTIMENT_NEGATIVITY[r.sentiment] === minNegativity,
+    );
+    const topSignals = priorityReactions
       .map((r) => r.citedSignal.trim())
       .filter(Boolean);
+    const dominantSentiment =
+      priorityReactions[0]?.sentiment ??
+      (minNegativity === 0 ? "objecting" : minNegativity === 1 ? "neutral" : "positive");
 
     return {
       segment,
       predictedReplyRate,
       topSignals,
+      dominantSentiment,
       personaCount: inSegment.length,
     };
   });

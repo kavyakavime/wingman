@@ -16,6 +16,7 @@ import {
   SWARM_GRAPH_BG_NUM,
   type AmbientLeadRow,
   type GraphPersonaRow,
+  type SwarmDisplayRound,
   type SwarmGraphLink,
   type SwarmGraphNode,
   type SwarmReactionRow,
@@ -43,7 +44,7 @@ type GraphCanvasProps = {
   graphData: ReturnType<typeof buildSwarmGraphData>;
   width: number;
   height: number;
-  displayRound: 1 | 2;
+  displayRound: SwarmDisplayRound;
   activeNodeCount: number;
   isSwarmRunning: boolean;
   onReady: (api: ForceGraphMethods) => void;
@@ -73,7 +74,7 @@ function nodeWorldPosition(node: SwarmGraphNode): {
 
 function fitActiveNodes(
   api: ForceGraphMethods,
-  displayRound: 1 | 2,
+  displayRound: SwarmDisplayRound,
   nodeCount: number,
 ) {
   const pad = Math.max(22, 26 + nodeCount * 1.05);
@@ -130,7 +131,7 @@ function positionNodePopup(
 function applyGraphForces(
   api: ForceGraphMethods,
   activeNodeCount: number,
-  displayRound: 1 | 2,
+  displayRound: SwarmDisplayRound,
 ) {
   const { charge, linkDistance } = graphForceSettings(activeNodeCount, displayRound);
   api.d3Force("charge")?.strength((node: object) =>
@@ -397,7 +398,7 @@ export function SwarmGraph({
 
   const [dimensions, setDimensions] = useState({ width: 640, height: 480 });
   const [focusedNode, setFocusedNode] = useState<SwarmGraphNode | null>(null);
-  const [displayRound, setDisplayRound] = useState<1 | 2>(1);
+  const [displayRound, setDisplayRound] = useState<SwarmDisplayRound>(1);
 
   focusedNodeRef.current = focusedNode;
 
@@ -418,6 +419,16 @@ export function SwarmGraph({
 
   const hasRound2Data = useMemo(
     () => safeReactions.some((r) => (r.round ?? 1) === 2),
+    [safeReactions],
+  );
+
+  const hasRound3Data = useMemo(
+    () => safeReactions.some((r) => (r.round ?? 1) === 3),
+    [safeReactions],
+  );
+
+  const round3Count = useMemo(
+    () => safeReactions.filter((r) => (r.round ?? 1) === 3).length,
     [safeReactions],
   );
 
@@ -595,13 +606,20 @@ export function SwarmGraph({
   }, [dimensions.height, dimensions.width, isSwarmRunning]);
 
   useEffect(() => {
+    if (hasRound3Data) {
+      setDisplayRound(3);
+    }
+  }, [hasRound3Data]);
+
+  useEffect(() => {
     if (displayRound === 2 && !hasRound2Data) {
       setDisplayRound(1);
     }
   }, [displayRound, hasRound2Data]);
 
   useEffect(() => {
-    if (round2Count === 0 || displayRound !== 2) return;
+    const peerCount = displayRound === 3 ? round3Count : round2Count;
+    if (peerCount === 0 || (displayRound !== 2 && displayRound !== 3)) return;
     const interval = window.setInterval(() => {
       const api = graphApiRef.current;
       if (!api) return;
@@ -610,7 +628,7 @@ export function SwarmGraph({
       }
     }, 2200);
     return () => window.clearInterval(interval);
-  }, [displayRound, round2Count]);
+  }, [displayRound, round2Count, round3Count]);
 
   useEffect(() => {
     const api = graphApiRef.current;
@@ -622,12 +640,14 @@ export function SwarmGraph({
   }, [displayReactions.length, activeNodeCount, displayRound, safePersonas.length]);
 
   const simulatedCount = useMemo(() => {
+    const targetRound =
+      displayRound === 3 ? 3 : displayRound === 2 ? 2 : 1;
     const ids = new Set<string>();
     for (const reaction of safeReactions) {
-      if ((reaction.round ?? 1) <= 2) ids.add(reaction.leadId);
+      if ((reaction.round ?? 1) === targetRound) ids.add(reaction.leadId);
     }
     return ids.size;
-  }, [safeReactions]);
+  }, [safeReactions, displayRound]);
 
   if (personas === undefined) {
     return (
@@ -653,8 +673,10 @@ export function SwarmGraph({
     );
   }
 
-  const hasPeerFlow = displayRound === 2 && round2Count > 0;
-  const showRoundToggle = displayReactions.length > 0;
+  const hasPeerFlow =
+    (displayRound === 2 && round2Count > 0) ||
+    (displayRound === 3 && round3Count > 0);
+  const showRoundToggle = displayReactions.length > 0 || hasRound3Data;
   const focusedGraphNode = resolveFocusedGraphNode(focusedNode, graphData.nodes);
 
   return (
@@ -738,8 +760,8 @@ export function SwarmGraph({
               disabled={!hasRound2Data}
               title={
                 hasRound2Data
-                  ? "Peer influence — agents re-react after seeing segment peers"
-                  : "Run with round 2 enabled to unlock"
+                  ? "Original draft — peer influence after solo reactions"
+                  : "Run baseline swarm with round 2 to unlock"
               }
               className={`rounded-full px-3 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
                 displayRound === 2
@@ -747,7 +769,24 @@ export function SwarmGraph({
                   : "text-white/45 hover:text-white/70"
               }`}
             >
-              Round 2
+              Original
+            </button>
+            <button
+              type="button"
+              onClick={() => hasRound3Data && setDisplayRound(3)}
+              disabled={!hasRound3Data}
+              title={
+                hasRound3Data
+                  ? "Rewritten emails — peer-influenced retest per segment"
+                  : "Run Fix it → Re-swarm to unlock"
+              }
+              className={`rounded-full px-3 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                displayRound === 3
+                  ? "bg-emerald-600/90 text-white"
+                  : "text-white/45 hover:text-white/70"
+              }`}
+            >
+              Rewrites
             </button>
           </div>
         </div>
@@ -763,8 +802,16 @@ export function SwarmGraph({
         </div>
       ) : hasPeerFlow ? (
         <div className="pointer-events-none absolute inset-x-0 top-20 z-10 flex justify-center">
-          <p className="rounded-full border border-emerald-400/20 bg-emerald-950/40 px-4 py-1.5 text-xs text-emerald-200/80 backdrop-blur-sm">
-            Round 2 — peer influence pulsing through segments
+          <p
+            className={`rounded-full border px-4 py-1.5 text-xs backdrop-blur-sm ${
+              displayRound === 3
+                ? "border-emerald-400/25 bg-emerald-950/50 text-emerald-200/90"
+                : "border-emerald-400/20 bg-emerald-950/40 text-emerald-200/80"
+            }`}
+          >
+            {displayRound === 3
+              ? "Rewritten emails — peer-influenced retest live on graph"
+              : "Original draft — peer influence pulsing through segments"}
           </p>
         </div>
       ) : displayRound === 1 && displayReactions.length > 0 ? (

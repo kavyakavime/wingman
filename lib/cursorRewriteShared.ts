@@ -4,6 +4,7 @@
 
 import type { PersonaSegment } from "./segments";
 import { SEGMENT_LABELS } from "./segments";
+import type { SwarmSentiment } from "./swarmGraphData";
 
 export type RewriteGeneratedVia = "cursor_sdk" | "openai_fallback";
 
@@ -20,25 +21,58 @@ export function buildRewritePrompt(
   segment: PersonaSegment,
   topSignals: string[],
   originalDraft: string,
-  options?: { extraInstructions?: string },
+  options?: {
+    extraInstructions?: string;
+    dominantSentiment?: SwarmSentiment | null;
+  },
 ): string {
-  const objections = topSignals
+  const signals = topSignals
     .map((signal, i) => `${i + 1}. "${signal}"`)
     .join("\n");
+
+  const sentiment = options?.dominantSentiment ?? "objecting";
+
+  const signalIntro =
+    sentiment === "neutral"
+      ? "The swarm test surfaced mild skepticism — personas were interested but not fully convinced. Their cited hesitations:"
+      : sentiment === "positive"
+        ? "The swarm test was mostly positive, but these cited signals still need sharper follow-through:"
+        : "The swarm test surfaced these specific objections / cited pain signals from personas in this segment:";
+
+  const rewriteGoals =
+    sentiment === "neutral"
+      ? [
+          "Rewrite the draft below into ONE variant that:",
+          "- Directly addresses the cited skepticism with concrete specificity (proof, relevance, or a sharper hook)",
+          "- Moves a mildly interested-but-unsure reader toward willingness to reply — not hype",
+          "- Keeps the same overall length, tone, and structure as the original (subject line, greeting, sign-off)",
+          "- Stays a single cohesive email — no meta commentary, no bullet list of changes",
+        ]
+      : sentiment === "positive"
+        ? [
+            "Rewrite the draft below into ONE variant that:",
+            "- Doubles down on what already resonated while tightening any vague lines",
+            "- References the cited signals in natural language (do not quote them verbatim as a list)",
+            "- Keeps the same overall length, tone, and structure as the original (subject line, greeting, sign-off)",
+            "- Stays a single cohesive email — no meta commentary, no bullet list of changes",
+          ]
+        : [
+            "Rewrite the draft below into ONE variant that:",
+            "- Directly acknowledges and addresses the cited objection(s) above — not generic improvements",
+            "- References the real cited pain in natural language (do not quote the objection labels verbatim as a list)",
+            "- Keeps the same overall length, tone, and structure as the original (subject line, greeting, sign-off)",
+            "- Stays a single cohesive email — no meta commentary, no bullet list of changes",
+          ];
 
   const lines = [
     "You are rewriting a cold outbound email draft for a specific audience segment.",
     "",
     `Target segment: ${SEGMENT_LABELS[segment]}`,
     "",
-    "The swarm test surfaced these specific objections / cited pain signals from personas in this segment:",
-    objections || "(none recorded — still tailor to this segment's typical concerns)",
+    signalIntro,
+    signals || "(none recorded — still tailor to this segment's typical concerns)",
     "",
-    "Rewrite the draft below into ONE variant that:",
-    "- Directly acknowledges and addresses the cited objection(s) above — not generic improvements",
-    "- References the real cited pain in natural language (do not quote the objection labels verbatim as a list)",
-    "- Keeps the same overall length, tone, and structure as the original (subject line, greeting, sign-off)",
-    "- Stays a single cohesive email — no meta commentary, no bullet list of changes",
+    ...rewriteGoals,
   ];
 
   if (options?.extraInstructions?.trim()) {
@@ -121,6 +155,7 @@ export async function rewriteForSegmentWithCursorFn(
     cursorApiKey?: string;
     openaiApiKey?: string;
     extraInstructions?: string;
+    dominantSentiment?: SwarmSentiment | null;
   },
 ): Promise<RewriteForSegmentResult> {
   const draft = originalDraft.trim();
@@ -130,6 +165,7 @@ export async function rewriteForSegmentWithCursorFn(
 
   const prompt = buildRewritePrompt(segment, topSignals, draft, {
     extraInstructions: options?.extraInstructions,
+    dominantSentiment: options?.dominantSentiment,
   });
   const cursorApiKey = options?.cursorApiKey ?? process.env.CURSOR_API_KEY;
   const openaiApiKey = options?.openaiApiKey ?? process.env.OPENAI_API_KEY;

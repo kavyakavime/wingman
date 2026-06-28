@@ -107,7 +107,10 @@ function EnrichPopup({
           </div>
           <button
             type="button"
-            onClick={onDismiss}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDismiss();
+            }}
             className="shrink-0 rounded-md p-1 text-stone-400 transition hover:bg-stone-800 hover:text-stone-300"
             aria-label="Dismiss"
           >

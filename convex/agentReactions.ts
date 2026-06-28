@@ -111,6 +111,22 @@ export const clearRound3Internal = internalMutation({
   },
 });
 
+export const clearRound3ForLeadIdsInternal = internalMutation({
+  args: { leadIds: v.array(v.id("leads")) },
+  handler: async (ctx, args) => {
+    const idSet = new Set(args.leadIds);
+    const existing = await ctx.db.query("agent_reactions").collect();
+    let deletedCount = 0;
+    for (const row of existing) {
+      if (row.round === 3 && idSet.has(row.leadId)) {
+        await ctx.db.delete(row._id);
+        deletedCount += 1;
+      }
+    }
+    return { deletedCount };
+  },
+});
+
 export const clearForLeadIdsInternal = internalMutation({
   args: { leadIds: v.array(v.id("leads")) },
   handler: async (ctx, args) => {

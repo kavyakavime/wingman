@@ -19,6 +19,7 @@ export async function rewriteForSegment(
     cursorApiKey?: string;
     openaiApiKey?: string;
     extraInstructions?: string;
+    dominantSentiment?: import("./swarmGraphData").SwarmSentiment | null;
   },
 ): Promise<RewriteForSegmentResult> {
   return rewriteForSegmentWithCursorFn(

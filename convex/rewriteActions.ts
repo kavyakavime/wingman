@@ -12,6 +12,7 @@ import { SEGMENT_ORDER, type PersonaSegment } from "../lib/segments";
 import { personaSegment } from "./schema";
 import {
   OpenAiApiError,
+  runPeerInfluenceReaction,
   runPersonaReaction,
 } from "../lib/openai";
 import { toReactionLead } from "./swarmHelpers";
@@ -29,6 +30,7 @@ type RewriteSummary = {
 export const generateSegmentRewrites = action({
   args: {
     originalDraft: v.string(),
+    leadIds: v.optional(v.array(v.id("leads"))),
   },
   handler: async (ctx, args): Promise<{ rewrites: RewriteSummary[] }> => {
     const originalDraft = args.originalDraft.trim();
@@ -36,7 +38,11 @@ export const generateSegmentRewrites = action({
       throw new Error("Original draft cannot be empty.");
     }
 
-    const allReactions = await ctx.runQuery(internal.agentReactions.listAllInternal, {});
+    let allReactions = await ctx.runQuery(internal.agentReactions.listAllInternal, {});
+    if (args.leadIds && args.leadIds.length > 0) {
+      const idSet = new Set(args.leadIds);
+      allReactions = allReactions.filter((r) => idSet.has(r.leadId));
+    }
     const displayReactions = pickDisplayReactions(allReactions, 2);
     const segmentScores = computeSegmentScores(displayReactions);
 
@@ -53,12 +59,13 @@ export const generateSegmentRewrites = action({
       SEGMENT_ORDER.map(async (segment) => {
         const score = segmentScores.find((s) => s.segment === segment);
         const topSignals = score?.topSignals ?? [];
+        const dominantSentiment = score?.dominantSentiment ?? null;
 
         const result = await rewriteForSegment(
           segment,
           topSignals,
           originalDraft,
-          { cursorApiKey, openaiApiKey },
+          { cursorApiKey, openaiApiKey, dominantSentiment },
         );
 
         return {
@@ -209,9 +216,12 @@ type RetestResult = {
 };
 
 export const retestRewrittenVariants = action({
-  args: {},
+  args: {
+    leadIds: v.optional(v.array(v.id("leads"))),
+  },
   handler: async (
     ctx,
+    args,
   ): Promise<{ reactionCount: number; results: RetestResult[] }> => {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -238,44 +248,72 @@ export const retestRewrittenVariants = action({
       }
     }
 
-    const leads: Doc<"leads">[] = await ctx.runQuery(
-      internal.leads.listLockedPersonasInternal,
-      {},
-    );
-    if (leads.length === 0) {
-      throw new Error(
-        "No locked demo personas found. Run seedDemo:seedLockedDemoPersonas first.",
-      );
+    let leads: Doc<"leads">[];
+    if (args.leadIds && args.leadIds.length > 0) {
+      leads = await ctx.runQuery(internal.leads.getLeadsByIdsInternal, {
+        leadIds: args.leadIds,
+      });
+      if (leads.length === 0) {
+        throw new Error("No leads found for the provided leadIds.");
+      }
+    } else {
+      leads = await ctx.runQuery(internal.leads.listLockedPersonasInternal, {});
+      if (leads.length === 0) {
+        throw new Error(
+          "No locked demo personas found. Run seedDemo:seedLockedDemoPersonas first.",
+        );
+      }
     }
 
-    await ctx.runMutation(internal.agentReactions.clearRound3Internal, {});
+    const leadIds = leads.map((lead) => lead._id);
+    await ctx.runMutation(internal.agentReactions.clearRound3ForLeadIdsInternal, {
+      leadIds,
+    });
+
+    type InitialReaction = {
+      lead: Doc<"leads">;
+      persona: ReturnType<typeof toReactionLead>;
+      draft: string;
+      reaction: Awaited<ReturnType<typeof runPersonaReaction>>;
+    };
+
+    const initialResults: InitialReaction[] = await Promise.all(
+      leads.map(async (lead) => {
+        const persona = toReactionLead(lead);
+        const segment = persona.segment;
+        if (!segment) {
+          throw new Error(`Lead ${lead.personName ?? lead._id} has no segment assignment`);
+        }
+        const draft = rewriteBySegment.get(segment)?.trim();
+        if (!draft) {
+          throw new Error(`No rewrite draft for segment ${segment}`);
+        }
+        const reaction = await runPersonaReaction(persona, draft, apiKey);
+        return { lead, persona, draft, reaction };
+      }),
+    );
 
     const results = await Promise.all(
-      leads.map(async (lead) => {
+      initialResults.map(async ({ lead, persona, draft, reaction: ownInitial }) => {
         const personName = lead.personName ?? "Unknown";
-        const segment = (lead.segment as PersonaSegment | undefined) ?? null;
-        if (!segment) {
-          return {
-            personName,
-            segment: null,
-            sentiment: "objecting" as const,
-            error: "Lead has no segment assignment",
-          };
-        }
-
-        const draft = rewriteBySegment.get(segment);
-        if (!draft?.trim()) {
-          return {
-            personName,
-            segment,
-            sentiment: "objecting" as const,
-            error: `No rewrite draft for segment ${segment}`,
-          };
-        }
+        const segment = persona.segment ?? null;
 
         try {
-          const persona = toReactionLead(lead);
-          const reaction = await runPersonaReaction(persona, draft, apiKey);
+          const peers = initialResults
+            .filter((row) => row.lead._id !== lead._id)
+            .map((row) => ({
+              personName: row.persona.personName,
+              sentiment: row.reaction.sentiment,
+              citedSignal: row.reaction.citedSignal,
+            }));
+
+          const reaction = await runPeerInfluenceReaction(
+            persona,
+            draft,
+            ownInitial,
+            peers,
+            apiKey,
+          );
 
           await ctx.runMutation(internal.agentReactions.insertInternal, {
             leadId: lead._id,
