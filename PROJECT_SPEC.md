@@ -18,9 +18,9 @@ You type your ICP in plain English. Wingman pulls back real, live people and com
 6. **Rewrite step** — Cursor SDK (`@cursor/sdk`, model `composer-2`, OpenAI fallback) generates a variant addressing the top objection. Swarm re-runs once. Score card shows predicted rate move.
 7. **One-click send** — Orange Slice fires the winning version to an opt-in list.
 
-## Stack (every sponsor load-bearing)
+## Stack
 
-| Sponsor | Role |
+| Platform | Role |
 |---------|------|
 | **Fiber AI** | Real-time company/people search on typed ICP — the audience itself |
 | **Orange Slice** | Persona enrichment (funding, pain, intent) + real send at the end |
@@ -52,21 +52,3 @@ Every agent reaction writes to Convex. The frontend subscribes live. This is wha
 ## Inspiration
 
 Swarm-reasoning approach inspired by [mirofish](https://github.com/mirofish/mirofish) — **independent implementation, not a fork.**
-
-## Hackathon schedule (reference)
-
-| Time | Focus |
-|------|-------|
-| 7:30–8:30pm | Scaffold + deploy (this hour) |
-| 8:30–9:30pm | Wire Fiber |
-| 9:30–10:30pm | Wire Orange Slice enrichment |
-| 10:30–11:30pm | Segments + Convex schema lock |
-| 11:30pm–12:30am | Per-persona OpenAI reactions → Convex |
-| 12:30–1:30am | Bloom 3D graph (protected hour) |
-| 1:30–2:30am | Segmented score card |
-| 2:30–3:30am | Cursor SDK rewrite + re-run |
-| 7:30–8:30am | Orange Slice one-click send, full loop |
-| 8:30–9:30am | Capture clean demo run |
-| 9:30–10:30am | Polish graph, blur PII, empty states |
-| 10:30–11:30am | Hidden replay toggle, rehearsal |
-| 11:30am–4pm | Edit submission video, submit |

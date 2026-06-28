@@ -20,7 +20,7 @@ import {
   type PersonaSegment,
 } from "../lib/segments";
 
-/** Locked hackathon ICP — do not change during the build. */
+/** Locked demo ICP — do not change during the build. */
 export const LOCKED_ICP =
   "VPs of Sales and CFOs at Series A and Series B SaaS companies in the United States";
 

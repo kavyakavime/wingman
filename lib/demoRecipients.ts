@@ -4,7 +4,7 @@ import type { PersonaSegment } from "./segments";
  * Opt-in demo recipients for Hour 9 controlled sends.
  *
  * These are NOT the locked CEO personas from the swarm simulation — they are
- * real people who explicitly agreed to receive a Wingman hackathon demo email.
+ * real people who explicitly agreed to receive a Wingman demo email.
  * Do not add real prospect emails here; keep this list small and opt-in only.
  *
  * Gmail plus-addressing (`+tag`) routes all three variants to one inbox for

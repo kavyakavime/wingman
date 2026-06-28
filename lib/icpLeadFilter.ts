@@ -111,8 +111,8 @@ export async function filterLeadsByIcpRelevance(
         {
           role: "system",
           content: [
-            "You judge whether B2B leads match an ideal customer profile (ICP).",
-            "Judge company type and role fit from the ICP and each lead's data.",
+            "Evaluate whether B2B leads match an ideal customer profile (ICP).",
+            "Assess company type and role fit from the ICP and each lead's data.",
             "yes = clear match. likely = strong match with minor ambiguity.",
             "partial = related industry or adjacent category that could still be worth outreach.",
             "no = clearly wrong category (media, unrelated industry, wrong role).",

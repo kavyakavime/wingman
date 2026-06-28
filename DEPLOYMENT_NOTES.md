@@ -1,13 +1,13 @@
-# Deployment notes (Wingman hackathon)
+# Deployment notes
 
 ## Prod vs local — do not mix them
 
 | Target | Convex deployment | Browser / app URL |
 |--------|-------------------|-------------------|
-| **Prod (judged)** | `formal-monitor-473` | https://wingman-gamma-sepia.vercel.app |
+| **Production** | `formal-monitor-473` | https://wingman-gamma-sepia.vercel.app |
 | Local dev | `local-*` on `127.0.0.1:3210` | http://localhost:3000 |
 
-Localhost uses `NEXT_PUBLIC_CONVEX_URL` from `.env.local`, which points at **local** Convex by default. Data written via `npx convex run` without a deployment flag also goes to **local**. That is not what gets judged.
+Localhost uses `NEXT_PUBLIC_CONVEX_URL` from `.env.local`, which points at **local** Convex by default. Data written via `npx convex run` without a deployment flag also goes to **local** — not production.
 
 ## Rule from hour 4 onward
 
