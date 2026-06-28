@@ -415,6 +415,42 @@ export const applyLeadEnrichment = internalMutation({
   },
 });
 
+/** Mark any still-loading leads in a batch as error (timeout / interrupted action). */
+export const finalizeEnrichmentBatch = internalMutation({
+  args: {
+    leadIds: v.array(v.id("leads")),
+    errorMessage: v.string(),
+  },
+  handler: async (ctx, args) => {
+    for (const leadId of args.leadIds) {
+      const lead = await ctx.db.get(leadId);
+      if (!lead || lead.enrichmentStatus !== "loading") continue;
+      await ctx.db.patch(leadId, {
+        enrichmentStatus: "error",
+        enrichmentError: args.errorMessage,
+        enrichedAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const clearStuckEnrichment = mutation({
+  args: { leadIds: v.array(v.id("leads")) },
+  handler: async (ctx, args) => {
+    const errorMessage =
+      "Enrichment was interrupted. Re-run enrich to retry this lead.";
+    for (const leadId of args.leadIds) {
+      const lead = await ctx.db.get(leadId);
+      if (!lead || lead.enrichmentStatus !== "loading") continue;
+      await ctx.db.patch(leadId, {
+        enrichmentStatus: "error",
+        enrichmentError: errorMessage,
+        enrichedAt: Date.now(),
+      });
+    }
+  },
+});
+
 export const insertLead = internalMutation({
   args: {
     runId: v.id("audienceRuns"),

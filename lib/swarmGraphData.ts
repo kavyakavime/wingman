@@ -75,7 +75,7 @@ export type SwarmGraphData = {
 
 export const IDLE_GRAPH_COLOR = "#c9c0a0";
 export const IDLE_NODE_VAL = 4;
-export const IDLE_EMISSIVE = 0.6;
+export const IDLE_EMISSIVE = 0.28;
 
 export const AMBIENT_NODE_COLOR = "#5a5668";
 export const AMBIENT_NODE_VAL = 1;
@@ -196,9 +196,9 @@ const SENTIMENT_VAL: Record<SwarmSentiment, number> = {
 };
 
 const SENTIMENT_EMISSIVE: Record<SwarmSentiment, number> = {
-  objecting: 1.8,
-  neutral: 1.2,
-  positive: 0.9,
+  objecting: 0.75,
+  neutral: 0.55,
+  positive: 0.45,
 };
 
 function layoutScale(totalNodes: number): number {

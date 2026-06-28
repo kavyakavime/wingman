@@ -39,12 +39,12 @@ export function createGlowNode(
     new THREE.MeshBasicMaterial({
       color: coreColor,
       transparent: true,
-      opacity: isAmbient ? 0.08 : 0.22 + emissiveIntensity * 0.04,
+      opacity: isAmbient ? 0.06 : 0.1 + emissiveIntensity * 0.02,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     }),
   );
-  glow.scale.setScalar(radius * (isAmbient ? 2.2 : 3.6));
+  glow.scale.setScalar(radius * (isAmbient ? 1.8 : 2.4));
   group.add(glow);
 
   const halo = new THREE.Mesh(
@@ -52,12 +52,12 @@ export function createGlowNode(
     new THREE.MeshBasicMaterial({
       color: coreColor,
       transparent: true,
-      opacity: isAmbient ? 0.04 : 0.1,
+      opacity: isAmbient ? 0.03 : 0.04,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     }),
   );
-  halo.scale.setScalar(radius * (isAmbient ? 4 : 6.5));
+  halo.scale.setScalar(radius * (isAmbient ? 2.8 : 3.8));
   group.add(halo);
 
   return { group, core, glow, halo };
@@ -81,19 +81,19 @@ export function updateGlowNode(
 ): void {
   const c = new THREE.Color(color);
   parts.core.scale.setScalar(radius);
-  parts.glow.scale.setScalar(radius * (isAmbient ? 2.2 : 3.6));
-  parts.halo.scale.setScalar(radius * (isAmbient ? 4 : 6.5));
+  parts.glow.scale.setScalar(radius * (isAmbient ? 1.8 : 2.4));
+  parts.halo.scale.setScalar(radius * (isAmbient ? 2.8 : 3.8));
 
   (parts.core.material as THREE.MeshBasicMaterial).color.copy(c);
   (parts.core.material as THREE.MeshBasicMaterial).opacity = isAmbient ? 0.35 : 0.98;
 
   const glowMat = parts.glow.material as THREE.MeshBasicMaterial;
   glowMat.color.copy(c);
-  glowMat.opacity = isAmbient ? 0.08 : 0.22 + emissiveIntensity * 0.04;
+  glowMat.opacity = isAmbient ? 0.06 : 0.1 + emissiveIntensity * 0.02;
 
   const haloMat = parts.halo.material as THREE.MeshBasicMaterial;
   haloMat.color.copy(c);
-  haloMat.opacity = isAmbient ? 0.04 : 0.1;
+  haloMat.opacity = isAmbient ? 0.03 : 0.04;
 }
 
 export function updateNodeMesh(
@@ -153,18 +153,16 @@ export function decorateSwarmScene(scene: THREE.Scene): {
   const bokehSprites: THREE.Sprite[] = [];
 
   const bokehSpecs = [
-    { tex: orangeTex, x: -120, y: 40, z: -80, scale: 90, drift: 0.0004 },
-    { tex: orangeTex, x: 80, y: -30, z: -60, scale: 70, drift: 0.0003 },
-    { tex: greenTex, x: -40, y: -50, z: -90, scale: 85, drift: 0.00035 },
-    { tex: greenTex, x: 100, y: 50, z: -70, scale: 60, drift: 0.00025 },
-    { tex: orangeTex, x: -90, y: -60, z: -50, scale: 55, drift: 0.0005 },
+    { tex: orangeTex, x: -120, y: 40, z: -80, scale: 70, drift: 0.0004 },
+    { tex: orangeTex, x: 80, y: -30, z: -60, scale: 55, drift: 0.0003 },
+    { tex: greenTex, x: -40, y: -50, z: -90, scale: 65, drift: 0.00035 },
   ];
 
   for (const spec of bokehSpecs) {
     const mat = new THREE.SpriteMaterial({
       map: spec.tex,
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.22,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
@@ -184,8 +182,8 @@ export function decorateSwarmScene(scene: THREE.Scene): {
   const beamGrad = bctx.createLinearGradient(0, 0, 512, 0);
   beamGrad.addColorStop(0, "rgba(255,120,60,0)");
   beamGrad.addColorStop(0.15, "rgba(255,160,80,0.15)");
-  beamGrad.addColorStop(0.45, "rgba(255,220,120,0.85)");
-  beamGrad.addColorStop(0.55, "rgba(180,255,160,0.75)");
+  beamGrad.addColorStop(0.45, "rgba(255,220,120,0.35)");
+  beamGrad.addColorStop(0.55, "rgba(180,255,160,0.28)");
   beamGrad.addColorStop(0.7, "rgba(120,220,255,0.35)");
   beamGrad.addColorStop(1, "rgba(255,255,255,0)");
   bctx.fillStyle = beamGrad;
@@ -198,54 +196,35 @@ export function decorateSwarmScene(scene: THREE.Scene): {
   const beamMat = new THREE.MeshBasicMaterial({
     map: beamTex,
     transparent: true,
-    opacity: 0.75,
+    opacity: 0.28,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
   });
-  const beam = new THREE.Mesh(new THREE.PlaneGeometry(280, 18), beamMat);
+  const beam = new THREE.Mesh(new THREE.PlaneGeometry(220, 12), beamMat);
   beam.position.set(-20, 8, -15);
   beam.rotation.y = 0.08;
   scene.add(beam);
 
-  const coreFlare = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 16, 16),
-    new THREE.MeshBasicMaterial({
-      color: 0xfff8e8,
-      transparent: true,
-      opacity: 0.85,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
-  );
-  coreFlare.scale.setScalar(6);
-  coreFlare.position.set(18, 6, -8);
-  scene.add(coreFlare);
-
-  const keyLight = new THREE.PointLight(0xffeedd, 2.2, 400);
+  const keyLight = new THREE.PointLight(0xffeedd, 0.65, 400);
   keyLight.position.set(15, 10, 30);
   scene.add(keyLight);
 
-  const fillGreen = new THREE.PointLight(0x88cc99, 0.8, 350);
+  const fillGreen = new THREE.PointLight(0x88cc99, 0.25, 350);
   fillGreen.position.set(-60, -20, 40);
   scene.add(fillGreen);
 
-  const fillOrange = new THREE.PointLight(0xffaa66, 0.6, 300);
-  fillOrange.position.set(70, 30, -20);
-  scene.add(fillOrange);
-
-  scene.add(new THREE.AmbientLight(0x1a1820, 0.35));
+  scene.add(new THREE.AmbientLight(0x1a1820, 0.22));
 
   return {
     tick(t: number) {
       for (const sprite of bokehSprites) {
         const ud = sprite.userData as { drift: number; baseY: number };
-        sprite.position.y = ud.baseY + Math.sin(t * ud.drift * 1000) * 4;
+        sprite.position.y = ud.baseY + Math.sin(t * ud.drift * 1000) * 2;
         const mat = sprite.material as THREE.SpriteMaterial;
-        mat.opacity = 0.4 + Math.sin(t * 0.0008 + ud.baseY) * 0.12;
+        mat.opacity = 0.14 + Math.sin(t * 0.0008 + ud.baseY) * 0.05;
       }
-      coreFlare.scale.setScalar(6 + Math.sin(t * 0.002) * 0.8);
-      beamMat.opacity = 0.65 + Math.sin(t * 0.0015) * 0.12;
+      beamMat.opacity = 0.22 + Math.sin(t * 0.0015) * 0.04;
     },
     dispose() {
       for (const sprite of bokehSprites) {
@@ -255,11 +234,8 @@ export function decorateSwarmScene(scene: THREE.Scene): {
       scene.remove(beam);
       beamMat.dispose();
       beamTex.dispose();
-      scene.remove(coreFlare);
-      (coreFlare.material as THREE.MeshBasicMaterial).dispose();
       scene.remove(keyLight);
       scene.remove(fillGreen);
-      scene.remove(fillOrange);
       orangeTex.dispose();
       greenTex.dispose();
     },

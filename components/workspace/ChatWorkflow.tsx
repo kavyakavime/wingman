@@ -19,11 +19,15 @@ import {
   SEGMENT_STYLES,
 } from "@/lib/segments";
 import { Button } from "../ui/Button";
-import { SendLeadsModal } from "../SendLeadsModal";
 import type { LeadRow } from "./LeadSpreadsheet";
 import { ChatModePicker, type ChatMode } from "./ChatModePicker";
 import type { IcpAttachmentPayload } from "@/lib/icpAttachment";
 import { readIcpAttachmentFile } from "@/lib/readIcpAttachment";
+import {
+  loadWorkspaceSession,
+  patchWorkspaceSession,
+  type StoredChatMessage,
+} from "@/lib/workspaceSession";
 
 export type OutreachChannel = "email" | "physical_mail" | "linkedin_dm";
 
@@ -49,6 +53,8 @@ type ChatMessage =
     };
 
 type ChatWorkflowProps = {
+  sessionReady: boolean;
+  activeRunId: Id<"audienceRuns"> | null;
   icp: string;
   onIcpChange: (value: string) => void;
   onFindAudience: (icp: string, attachment?: IcpAttachmentPayload | null) => Promise<void>;
@@ -59,9 +65,14 @@ type ChatWorkflowProps = {
   selectedLeadIds: Id<"leads">[];
   selectedLeads: LeadRow[];
   enrichComplete: boolean;
+  isEnriching: boolean;
+  onEnrichSelected: () => Promise<void>;
   leadCount: number;
   onGoToSwarm: () => void;
+  onGoToRewrites: () => void;
   onSwarmActiveChange: (active: boolean) => void;
+  onOpenSendModal: () => void;
+  onSimulationDraftChange: (draft: string) => void;
 };
 
 function AttachIcon() {
@@ -121,7 +132,7 @@ function SwarmResultsCard({
   onSend,
   isGenerating,
   isSwarmRunning,
-  hasRewrites,
+  fixItUsed,
   hasRound3,
 }: {
   label: string;
@@ -134,7 +145,7 @@ function SwarmResultsCard({
   onSend?: () => void;
   isGenerating?: boolean;
   isSwarmRunning?: boolean;
-  hasRewrites?: boolean;
+  fixItUsed?: boolean;
   hasRound3?: boolean;
 }) {
   return (
@@ -204,7 +215,7 @@ function SwarmResultsCard({
         <Button
           type="button"
           onClick={onFixIt}
-          disabled={isGenerating || isSwarmRunning || hasRewrites}
+          disabled={isGenerating || isSwarmRunning || fixItUsed}
         >
           {isGenerating ? "Fixing with Cursor SDK…" : "Fix it"}
         </Button>
@@ -251,6 +262,8 @@ function RewriteReadyCard({
 }
 
 export function ChatWorkflow({
+  sessionReady,
+  activeRunId,
   icp,
   onIcpChange,
   onFindAudience,
@@ -261,10 +274,19 @@ export function ChatWorkflow({
   selectedLeadIds,
   selectedLeads,
   enrichComplete,
+  isEnriching,
+  onEnrichSelected,
   leadCount,
   onGoToSwarm,
+  onGoToRewrites,
   onSwarmActiveChange,
+  onOpenSendModal,
+  onSimulationDraftChange,
 }: ChatWorkflowProps) {
+  const runKey = activeRunId ?? null;
+  const chatRestoredForRunRef = useRef<string | null>(null);
+  const skipChatPersistRef = useRef(false);
+
   const [chatMode, setChatMode] = useState<ChatMode>("icp_lead_gen");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -280,7 +302,6 @@ export function ChatWorkflow({
   const [isRetesting, setIsRetesting] = useState(false);
   const [clientError, setClientError] = useState<string | null>(null);
   const [expectedReactionCount, setExpectedReactionCount] = useState(0);
-  const [showSendLeadsModal, setShowSendLeadsModal] = useState(false);
   const [awaitingBaselineScores, setAwaitingBaselineScores] = useState(false);
   const [awaitingRetestScores, setAwaitingRetestScores] = useState(false);
   const baselineResultsSentRef = useRef(false);
@@ -288,8 +309,58 @@ export function ChatWorkflow({
   const [leadsLoadedSent, setLeadsLoadedSent] = useState(false);
   const [enrichCompleteSent, setEnrichCompleteSent] = useState(false);
 
+  useEffect(() => {
+    if (!sessionReady) return;
+
+    const sessionKey = runKey ?? "__none__";
+    if (chatRestoredForRunRef.current === sessionKey) return;
+
+    const session = loadWorkspaceSession();
+    const savedRunId = session.chat.runId ?? null;
+    const currentRunId = runKey;
+
+    if (session.activeRunId && currentRunId === null) return;
+
+    if (String(savedRunId) !== String(currentRunId)) {
+      chatRestoredForRunRef.current = sessionKey;
+      setChatMode("icp_lead_gen");
+      setMessages([]);
+      setChannel(null);
+      setDraftMessage("");
+      setActiveDraft("");
+      setLeadsLoadedSent(false);
+      setEnrichCompleteSent(false);
+      baselineResultsSentRef.current = false;
+      retestResultsSentRef.current = false;
+      return;
+    }
+
+    skipChatPersistRef.current = true;
+    chatRestoredForRunRef.current = sessionKey;
+    setChatMode(session.chat.chatMode);
+    setMessages(session.chat.messages as ChatMessage[]);
+    setChannel(session.chat.channel);
+    setDraftMessage(session.chat.draftMessage);
+    setActiveDraft(session.chat.activeDraft);
+    setLeadsLoadedSent(session.chat.leadsLoadedSent);
+    setEnrichCompleteSent(session.chat.enrichCompleteSent);
+    baselineResultsSentRef.current = session.chat.baselineResultsSent;
+    retestResultsSentRef.current = session.chat.retestResultsSent;
+  }, [sessionReady, runKey]);
+
   const canEnrich = hasLiveLeads && runStatus === "complete";
-  const canSimulate = enrichComplete && selectedLeadIds.length > 0;
+  const selectedLeadsEnriched =
+    selectedLeads.length > 0 &&
+    selectedLeads.every(
+      (l) => l.enrichmentStatus === "complete" || l.enrichmentStatus === "error",
+    );
+  const selectedLeadsNeedEnrichment = selectedLeads.some(
+    (l) => l.enrichmentStatus !== "complete" && l.enrichmentStatus !== "loading",
+  );
+  const selectedLeadsEnriching = selectedLeads.some(
+    (l) => l.enrichmentStatus === "loading",
+  );
+  const canSimulate = selectedLeadsEnriched;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const runSwarm = useAction(api.swarmActions.runSwarm);
@@ -326,7 +397,21 @@ export function ChatWorkflow({
   }, [isStreaming, onSwarmActiveChange]);
 
   const hasRound3 = swarmReactions.some((r) => (r.round ?? 1) === 3);
-  const hasRewrites = (rewrites?.length ?? 0) >= 3;
+
+  const fixItUsed = useMemo(() => {
+    let lastBaselineIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const msg = messages[i];
+      if (msg.kind === "swarm_results" && msg.variant === "baseline") {
+        lastBaselineIdx = i;
+        break;
+      }
+    }
+    if (lastBaselineIdx === -1) return false;
+    return messages
+      .slice(lastBaselineIdx + 1)
+      .some((msg) => msg.kind === "rewrite_ready");
+  }, [messages]);
 
   const appendMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => [...prev, msg]);
@@ -334,7 +419,44 @@ export function ChatWorkflow({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, showSendLeadsModal]);
+  }, [messages]);
+
+  useEffect(() => {
+    onSimulationDraftChange(activeDraft.trim() || draftMessage.trim());
+  }, [activeDraft, draftMessage, onSimulationDraftChange]);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    if (skipChatPersistRef.current) {
+      skipChatPersistRef.current = false;
+      return;
+    }
+    if (chatRestoredForRunRef.current !== (runKey ?? "__none__")) return;
+    patchWorkspaceSession({
+      chat: {
+        runId: runKey,
+        messages: messages as StoredChatMessage[],
+        chatMode,
+        draftMessage,
+        activeDraft,
+        channel,
+        leadsLoadedSent,
+        enrichCompleteSent,
+        baselineResultsSent: baselineResultsSentRef.current,
+        retestResultsSent: retestResultsSentRef.current,
+      },
+    });
+  }, [
+    sessionReady,
+    runKey,
+    messages,
+    chatMode,
+    draftMessage,
+    activeDraft,
+    channel,
+    leadsLoadedSent,
+    enrichCompleteSent,
+  ]);
 
   useEffect(() => {
     if (chatMode === "simulation" && !canSimulate) {
@@ -350,21 +472,21 @@ export function ChatWorkflow({
       id: uid(),
       role: "assistant",
       kind: "text",
-      content: `${leadCount} leads loaded from Fiber. Use the Enrich popup on the spreadsheet to pull live signals.`,
+      content: `${leadCount} leads loaded from Fiber. Select leads in the spreadsheet, then use Enrichment to pull live signals.`,
     });
   }, [hasLiveLeads, leadsLoadedSent, leadCount, appendMessage]);
 
   useEffect(() => {
-    if (!enrichComplete || enrichCompleteSent || leadCount === 0) return;
+    if (!selectedLeadsEnriched || enrichCompleteSent || selectedLeads.length === 0) return;
     setEnrichCompleteSent(true);
     appendMessage({
       id: uid(),
       role: "assistant",
       kind: "text",
       content:
-        "Enrichment complete. Select one or more leads in the spreadsheet — Simulation unlocks when at least one row is checked.",
+        "Selected leads enriched. Switch to Simulation to test your draft on those digital twins.",
     });
-  }, [enrichComplete, enrichCompleteSent, leadCount, appendMessage]);
+  }, [selectedLeadsEnriched, enrichCompleteSent, selectedLeads.length, appendMessage]);
 
   useEffect(() => {
     if (!isSwarmRunning && !isRetesting && expectedReactionCount > 0) {
@@ -460,6 +582,27 @@ export function ChatWorkflow({
 
     if (chatMode === "simulation") {
       await handleRunSwarm();
+      return;
+    }
+
+    if (chatMode === "enrichment") {
+      if (selectedLeadIds.length === 0 || isEnriching || selectedLeadsEnriching) return;
+
+      appendMessage({
+        id: uid(),
+        role: "user",
+        kind: "text",
+        content: `Enrich ${selectedLeadIds.length} selected lead${selectedLeadIds.length === 1 ? "" : "s"}`,
+      });
+      appendMessage({
+        id: uid(),
+        role: "assistant",
+        kind: "text",
+        content: "Pulling live signals for selected leads…",
+      });
+
+      await onEnrichSelected();
+      return;
     }
   }
 
@@ -550,6 +693,7 @@ export function ChatWorkflow({
         role: "assistant",
         kind: "rewrite_ready",
       });
+      onGoToRewrites();
     } catch (error) {
       setClientError(
         error instanceof Error ? error.message : "Rewrite generation failed.",
@@ -593,24 +737,35 @@ export function ChatWorkflow({
   const canSendIcp =
     chatMode === "icp_lead_gen" && (icp.trim().length > 0 || attachment !== null) && !isSearching;
 
+  const canSendEnrichment =
+    chatMode === "enrichment" &&
+    canEnrich &&
+    selectedLeadIds.length > 0 &&
+    selectedLeadsNeedEnrichment &&
+    !isEnriching &&
+    !selectedLeadsEnriching;
+
   const canSendSimulation =
     chatMode === "simulation" &&
-    enrichComplete &&
-    selectedLeadIds.length > 0 &&
+    selectedLeadsEnriched &&
     channel !== null &&
     draftMessage.trim().length > 0 &&
     !isSwarmRunning &&
     !isGenerating &&
     !isRetesting;
 
-  const canSend = canSendIcp || canSendSimulation;
+  const canSend = canSendIcp || canSendEnrichment || canSendSimulation;
 
   const sendLabel =
     isSearching
       ? "Sending…"
-      : isSwarmRunning
-        ? "Simulating…"
-        : "Send";
+      : isEnriching || selectedLeadsEnriching
+        ? "Enriching…"
+        : isSwarmRunning
+          ? "Simulating…"
+          : chatMode === "enrichment"
+            ? "Enrich"
+            : "Send";
 
   const inputPlaceholder =
     chatMode === "simulation"
@@ -631,7 +786,7 @@ export function ChatWorkflow({
           {chatMode === "icp_lead_gen"
             ? "Type or attach an ICP, then send."
             : chatMode === "enrichment"
-              ? "Enrich leads from the spreadsheet popup."
+              ? "Select leads in the spreadsheet, then send to enrich them."
               : "Paste a draft and send to simulate."}
         </p>
       </div>
@@ -695,10 +850,10 @@ export function ChatWorkflow({
                       beforeScores={msg.beforeScores}
                       variant={msg.variant}
                       onFixIt={msg.variant === "baseline" ? handleFixIt : undefined}
-                      onSend={() => setShowSendLeadsModal(true)}
+                      onSend={onOpenSendModal}
                       isGenerating={isGenerating}
                       isSwarmRunning={isSwarmRunning}
-                      hasRewrites={hasRewrites}
+                      fixItUsed={fixItUsed}
                       hasRound3={hasRound3}
                     />
                   </div>
@@ -707,13 +862,6 @@ export function ChatWorkflow({
 
               return null;
             })}
-
-            <SendLeadsModal
-              open={showSendLeadsModal}
-              onClose={() => setShowSendLeadsModal(false)}
-              leads={selectedLeads}
-              simulationDraft={activeDraft.trim() || draftMessage.trim()}
-            />
 
             {clientError && (
               <p className="rounded-lg border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-300">
@@ -740,18 +888,30 @@ export function ChatWorkflow({
 
         {chatMode === "enrichment" ? (
           <div className="mt-3 rounded-xl border border-stone-800 bg-cream/60 px-4 py-4 text-sm leading-relaxed text-stone-400">
-            {enrichComplete ? (
+            {!canEnrich ? (
+              <p>Run ICP and lead generation first to load leads from Fiber.</p>
+            ) : selectedLeadIds.length === 0 ? (
               <p>
-                All leads enriched. Select rows in the spreadsheet, then switch to{" "}
-                <span className="font-medium text-stone-200">Simulation</span>.
+                Check one or more rows in the spreadsheet, then hit{" "}
+                <span className="font-medium text-stone-200">Enrich</span> to pull live signals
+                for those leads.
               </p>
-            ) : canEnrich ? (
+            ) : selectedLeadsEnriched ? (
               <p>
-                Click <span className="font-medium text-stone-200">Enrich</span> in the popup on
-                the spreadsheet to pull live signals for every row.
+                Selected leads are enriched. Switch to{" "}
+                <span className="font-medium text-stone-200">Simulation</span> to test your draft.
+              </p>
+            ) : selectedLeadsEnriching || isEnriching ? (
+              <p>
+                Enriching {selectedLeadIds.length} selected lead
+                {selectedLeadIds.length === 1 ? "" : "s"}…
               </p>
             ) : (
-              <p>Run ICP and lead generation first to load leads from Fiber.</p>
+              <p>
+                {selectedLeadIds.length} lead{selectedLeadIds.length === 1 ? "" : "s"} selected —
+                hit <span className="font-medium text-stone-200">Enrich</span> to pull live
+                signals.
+              </p>
             )}
           </div>
         ) : (
@@ -843,18 +1003,11 @@ export function ChatWorkflow({
               {selectedLeadIds.length} lead{selectedLeadIds.length === 1 ? "" : "s"} selected
               {channel ? ` · ${channelLabel(channel)}` : ""}
             </p>
-          ) : (
-            <span className="text-xs text-stone-400">Use the Enrich popup on the spreadsheet</span>
-          )}
-
-          {selectedLeadIds.length > 0 ? (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setShowSendLeadsModal(true)}
-            >
-              One-click send
-            </Button>
+          ) : chatMode === "enrichment" ? (
+            <p className="text-xs text-stone-400">
+              {selectedLeadIds.length} lead{selectedLeadIds.length === 1 ? "" : "s"} selected
+              {selectedLeadsEnriched ? " · enriched" : selectedLeadsEnriching ? " · enriching…" : ""}
+            </p>
           ) : null}
 
           <Button

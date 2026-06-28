@@ -86,7 +86,7 @@ export function SwarmGraphForeground({ active }: { active: boolean }) {
       offsetRef.current += 0.35;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
-      ctx.fillStyle = "rgba(255,255,255,0.14)";
+      ctx.fillStyle = "rgba(255,255,255,0.06)";
 
       NUMERIC_ROWS.forEach((row, i) => {
         const y = canvas.height * (0.2 + i * 0.07);
@@ -114,7 +114,7 @@ export function SwarmGraphForeground({ active }: { active: boolean }) {
       <div className="swarm-overlay-beam pointer-events-none absolute inset-0 z-[15]" aria-hidden />
       <canvas
         ref={canvasRef}
-        className="pointer-events-none absolute inset-0 z-[16] mix-blend-screen"
+        className="pointer-events-none absolute inset-0 z-[16] opacity-40"
         aria-hidden
       />
       <span

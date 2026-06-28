@@ -1,6 +1,6 @@
 "use node";
 
-import { FiberApiError, searchAudience } from "../lib/fiber";
+import { FiberApiError, resolveFiberPageSize, searchAudience } from "../lib/fiber";
 import {
   IcpAttachmentError,
   resolveFiberIcpQuery,
@@ -81,7 +81,8 @@ export const fetchAudience = action({
     }
 
     try {
-      const result = await searchAudience(icp, apiKey, { pageSize: 25 });
+      const pageSize = resolveFiberPageSize(args.icp, icp);
+      const result = await searchAudience(icp, apiKey, { pageSize });
 
       if (result.leads.length === 0) {
         await ctx.runMutation(internal.leads.finishRun, {

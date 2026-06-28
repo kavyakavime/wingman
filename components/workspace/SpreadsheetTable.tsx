@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MOCK_LEADS, type MockLeadRow } from "@/lib/mockLeads";
 import type { LeadRow } from "./LeadSpreadsheet";
@@ -48,6 +49,73 @@ function EnrichmentBadge({
   return <span className="text-xs text-brand-blue-light/70">Pending</span>;
 }
 
+function ExpandActivityIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
+      {expanded ? (
+        <path
+          d="M8 14l4-4 4 4"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : (
+        <path
+          d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
+    </svg>
+  );
+}
+
+function RecentActivityCell({
+  activity,
+  loading,
+}: {
+  activity: string | null | undefined;
+  loading?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const display = loading ? "…" : (activity?.trim() || "—");
+  const canExpand = !loading && display !== "—";
+
+  return (
+    <td className={`${td} max-w-[200px] align-top text-xs text-stone-500`}>
+      <div
+        className={`relative min-h-[2.5rem] rounded-md border border-transparent pr-5 ${
+          expanded ? "border-white/10 bg-stone-900/50 p-2" : ""
+        }`}
+      >
+        <p
+          className={
+            expanded
+              ? "whitespace-pre-wrap leading-relaxed text-stone-300"
+              : "line-clamp-2 leading-snug"
+          }
+        >
+          {display}
+        </p>
+        {canExpand ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((open) => !open)}
+            className="absolute bottom-0 right-0 flex h-4 w-4 items-center justify-center rounded-sm bg-stone-800/95 text-stone-400 shadow-sm ring-1 ring-white/10 transition hover:bg-stone-700 hover:text-stone-100"
+            aria-label={expanded ? "Collapse recent activity" : "Expand recent activity"}
+            aria-expanded={expanded}
+          >
+            <ExpandActivityIcon expanded={expanded} />
+          </button>
+        ) : null}
+      </div>
+    </td>
+  );
+}
+
 type SpreadsheetTableProps = {
   mode: "mock" | "live";
   mockRows?: MockLeadRow[];
@@ -56,6 +124,7 @@ type SpreadsheetTableProps = {
   onToggleLead?: (id: Id<"leads">) => void;
   onToggleAll?: (checked: boolean) => void;
   isPreview?: boolean;
+  selectionEnabled?: boolean;
 };
 
 export function SpreadsheetTable({
@@ -66,6 +135,7 @@ export function SpreadsheetTable({
   onToggleLead,
   onToggleAll,
   isPreview = false,
+  selectionEnabled = false,
 }: SpreadsheetTableProps) {
   const allSelected =
     mode === "live" &&
@@ -85,11 +155,12 @@ export function SpreadsheetTable({
                 <input
                   type="checkbox"
                   checked={allSelected}
+                  disabled={!selectionEnabled}
                   ref={(el) => {
                     if (el) el.indeterminate = someSelected && !allSelected;
                   }}
                   onChange={(e) => onToggleAll(e.target.checked)}
-                  className="h-4 w-4 rounded border-brand-blue/40 accent-brand-blue-light"
+                  className="h-4 w-4 rounded border-brand-blue/40 accent-brand-blue-light disabled:cursor-not-allowed disabled:opacity-40"
                   aria-label="Select all leads"
                 />
               ) : (
@@ -127,9 +198,7 @@ export function SpreadsheetTable({
                   <td className={`${td} max-w-[110px] truncate text-xs text-stone-500`}>
                     {lead.locality}
                   </td>
-                  <td className={`${td} max-w-[200px] truncate text-xs text-stone-500`}>
-                    {lead.recentActivity}
-                  </td>
+                  <RecentActivityCell activity={lead.recentActivity} />
                   <td className={`${td} max-w-[160px] truncate text-xs text-stone-500`}>
                     {lead.painSignal}
                   </td>
@@ -142,7 +211,6 @@ export function SpreadsheetTable({
               ))
             : liveRows.map((lead, index) => {
                 const selected = selectedIds.has(lead._id);
-                const activity = lead.recentActivity ?? lead.painSignal;
                 return (
                   <tr
                     key={lead._id}
@@ -157,8 +225,9 @@ export function SpreadsheetTable({
                       <input
                         type="checkbox"
                         checked={selected}
+                        disabled={!selectionEnabled}
                         onChange={() => onToggleLead?.(lead._id)}
-                        className="h-4 w-4 rounded border-stone-700 accent-brand-blue"
+                        className="h-4 w-4 rounded border-stone-700 accent-brand-blue disabled:cursor-not-allowed disabled:opacity-40"
                         aria-label={`Select ${lead.personName ?? "lead"}`}
                       />
                     </td>
@@ -197,17 +266,10 @@ export function SpreadsheetTable({
                     >
                       {lead.locality ?? "—"}
                     </td>
-                    <td
-                      className={`${td} max-w-[200px] truncate text-xs text-stone-500`}
-                      title={activity ?? undefined}
-                    >
-                      {activity ??
-                        (lead.enrichmentStatus === "loading"
-                          ? "…"
-                          : lead.enrichmentStatus === "complete"
-                            ? "—"
-                            : "—")}
-                    </td>
+                    <RecentActivityCell
+                      activity={lead.recentActivity}
+                      loading={lead.enrichmentStatus === "loading"}
+                    />
                     <td
                       className={`${td} max-w-[160px] truncate text-xs`}
                       title={lead.painSignal ?? undefined}

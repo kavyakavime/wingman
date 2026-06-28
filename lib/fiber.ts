@@ -266,6 +266,15 @@ function mapCompanies(searchId: string, companies: FiberCompany[]): FiberAudienc
 }
 
 /**
+ * Fiber page size from ICP copy. Testing hook: "10 leads" → 10, otherwise 25.
+ */
+export function resolveFiberPageSize(...icpTexts: string[]): number {
+  const combined = icpTexts.filter(Boolean).join(" ");
+  if (/\b10\s+leads\b/i.test(combined)) return 10;
+  return 25;
+}
+
+/**
  * Search Fiber for real companies/people matching a plain-English ICP.
  * Uses POST /v1/nlp-search/run (slushieRun).
  */

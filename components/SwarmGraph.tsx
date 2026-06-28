@@ -20,6 +20,7 @@ import {
   type SwarmGraphNode,
   type SwarmReactionRow,
 } from "@/lib/swarmGraphData";
+import { SEGMENT_LABELS } from "@/lib/segments";
 import { createGlowNode, decorateSwarmScene, updateGlowNode, type GlowNodeParts } from "@/lib/swarmGraphScene";
 import { SwarmGraphBackdrop, SwarmGraphForeground } from "./SwarmGraphOverlay";
 
@@ -94,8 +95,15 @@ function fitActiveNodes(
   }
 }
 
-const POPUP_WIDTH = 288;
+const POPUP_WIDTH = 300;
 const POPUP_OFFSET_X = 18;
+
+function sentimentLabel(sentiment: SwarmGraphNode["sentiment"]): string {
+  if (sentiment === "positive") return "Positive";
+  if (sentiment === "neutral") return "Neutral";
+  if (sentiment === "objecting") return "Objecting";
+  return "Pending";
+}
 
 function positionNodePopup(
   el: HTMLDivElement,
@@ -181,12 +189,12 @@ const GraphCanvas = memo(function GraphCanvas({
       graph.scene().background = new THREE.Color(SWARM_GRAPH_BG_NUM);
       graph.renderer().setClearColor(SWARM_GRAPH_BG_NUM, 1);
       graph.renderer().toneMapping = THREE.ACESFilmicToneMapping;
-      graph.renderer().toneMappingExposure = 1.1;
+      graph.renderer().toneMappingExposure = 0.72;
       const bloomPass = new UnrealBloomPass(
         new THREE.Vector2(width, height),
-        1.35,
-        0.55,
-        0.08,
+        0.42,
+        0.35,
+        0.22,
       );
       graph.postProcessingComposer().addPass(bloomPass);
       sceneDecorRef.current = decorateSwarmScene(graph.scene());
@@ -206,7 +214,7 @@ const GraphCanvas = memo(function GraphCanvas({
         : activeNodeRadius(node.val, activeNodeCount);
       const emissive =
         !node.isAmbient && !node.sentiment && isSwarmRunning
-          ? node.emissiveIntensity + Math.sin(performance.now() * 0.004) * 0.35
+          ? node.emissiveIntensity + Math.sin(performance.now() * 0.004) * 0.08
           : node.emissiveIntensity;
       updateGlowNode(
         parts,
@@ -256,7 +264,7 @@ const GraphCanvas = memo(function GraphCanvas({
         if (displayRound === 2 && l.peerActivated) return 0.32;
         return 0.18;
       }}
-      linkOpacity={0.28}
+      linkOpacity={0.14}
       linkCurvature={0.28}
       linkResolution={8}
       linkDirectionalParticles={(link) => {
@@ -265,7 +273,7 @@ const GraphCanvas = memo(function GraphCanvas({
         return displayRound === 2 && l.peerActivated ? 3 : 1;
       }}
       linkDirectionalParticleSpeed={0.004}
-      linkDirectionalParticleWidth={0.8}
+      linkDirectionalParticleWidth={0.45}
       linkDirectionalParticleColor={(link) => (link as SwarmGraphLink).color}
       d3AlphaDecay={0.018}
       d3VelocityDecay={0.32}
@@ -290,41 +298,83 @@ const GraphCanvas = memo(function GraphCanvas({
 function NodeDetailPopup({
   node,
   popupRef,
+  onClose,
 }: {
   node: SwarmGraphNode;
   popupRef: MutableRefObject<HTMLDivElement | null>;
+  onClose: () => void;
 }) {
   return (
     <div
       ref={popupRef}
-      className="swarm-node-popup pointer-events-none absolute z-[25] hidden w-72 rounded-xl border border-white/12 bg-black/72 p-4 shadow-2xl backdrop-blur-md"
+      role="dialog"
+      aria-label={`${node.label} agent response`}
+      className="swarm-node-popup pointer-events-auto absolute z-[25] hidden w-[300px] rounded-xl border border-stone-700/80 bg-cream-deep/95 p-0 shadow-2xl backdrop-blur-md"
       style={{ transform: "translateY(-50%)" }}
     >
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-semibold text-white/95">{node.label}</h3>
-        {node.sentiment ? (
-          <span className="rounded-full bg-cream-deep/10 px-2 py-0.5 text-xs capitalize text-white/70">
-            {node.sentiment}
-          </span>
-        ) : null}
-        {node.round === 2 ? (
-          <span className="rounded-full bg-violet-500/30 px-2 py-0.5 text-xs text-violet-200">
-            Round 2
-          </span>
-        ) : null}
+      <div className="flex items-start justify-between gap-2 border-b border-stone-800 px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-semibold text-stone-100">{node.label}</h3>
+          <p className="mt-0.5 text-[11px] text-stone-500">
+            {SEGMENT_LABELS[node.segment]}
+            {node.round ? ` · Round ${node.round}` : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="shrink-0 rounded-md p-1 text-stone-500 transition hover:bg-stone-800 hover:text-stone-200"
+          aria-label="Close"
+        >
+          ×
+        </button>
       </div>
-      {node.reasoningText ? (
-        <p className="text-sm leading-relaxed text-white/75">{node.reasoningText}</p>
-      ) : (
-        <p className="text-sm text-white/40">Waiting for swarm reaction…</p>
-      )}
-      {node.citedSignal ? (
-        <p className="mt-3 border-t border-white/10 pt-3 text-xs text-white/45">
-          <span className="font-medium text-white/65">Cited signal: </span>
-          &ldquo;{node.citedSignal}&rdquo;
-        </p>
-      ) : null}
+
+      <dl className="space-y-3 px-4 py-3 text-xs">
+        <div className="grid grid-cols-[88px_1fr] gap-x-2 gap-y-1">
+          <dt className="font-medium text-stone-500">Sentiment</dt>
+          <dd>
+            {node.sentiment ? (
+              <span
+                className={`inline-flex rounded-full px-2 py-0.5 font-medium capitalize swarm-node-label--${node.sentiment}`}
+                style={{ fontSize: "11px", textShadow: "none" }}
+              >
+                {sentimentLabel(node.sentiment)}
+              </span>
+            ) : (
+              <span className="text-stone-500">Awaiting reaction</span>
+            )}
+          </dd>
+        </div>
+
+        <div className="grid grid-cols-[88px_1fr] gap-x-2">
+          <dt className="font-medium text-stone-500">Reaction</dt>
+          <dd className="text-sm leading-relaxed text-stone-300">
+            {node.reasoningText ?? "Swarm has not reacted yet."}
+          </dd>
+        </div>
+
+        {node.citedSignal ? (
+          <div className="grid grid-cols-[88px_1fr] gap-x-2 border-t border-stone-800 pt-3">
+            <dt className="font-medium text-stone-500">Cited signal</dt>
+            <dd className="text-sm italic leading-relaxed text-stone-400">
+              &ldquo;{node.citedSignal}&rdquo;
+            </dd>
+          </div>
+        ) : null}
+      </dl>
     </div>
+  );
+}
+
+function resolveFocusedGraphNode(
+  focusedNode: SwarmGraphNode | null,
+  nodes: SwarmGraphNode[],
+): SwarmGraphNode | null {
+  if (!focusedNode) return null;
+  return (
+    nodes.find((node) => node.id === focusedNode.id && !node.isAmbient) ??
+    focusedNode
   );
 }
 
@@ -605,15 +655,7 @@ export function SwarmGraph({
 
   const hasPeerFlow = displayRound === 2 && round2Count > 0;
   const showRoundToggle = displayReactions.length > 0;
-
-  const focusedGraphNode = useMemo(() => {
-    if (!focusedNode) return null;
-    return (
-      graphData.nodes.find(
-        (node) => node.id === focusedNode.id && !node.isAmbient,
-      ) ?? focusedNode
-    );
-  }, [focusedNode, graphData.nodes]);
+  const focusedGraphNode = resolveFocusedGraphNode(focusedNode, graphData.nodes);
 
   return (
     <div
@@ -631,9 +673,10 @@ export function SwarmGraph({
         activeNodeCount={activeNodeCount}
         isSwarmRunning={isSwarmRunning}
         onReady={handleGraphReady}
-        onNodeClick={(node) =>
-          setFocusedNode(node.isActive ? node : null)
-        }
+        onNodeClick={(node) => {
+          if (node.isAmbient) return;
+          setFocusedNode((prev) => (prev?.id === node.id ? null : node));
+        }}
         onBackgroundClick={() => setFocusedNode(null)}
       />
 
@@ -700,7 +743,7 @@ export function SwarmGraph({
               }
               className={`rounded-full px-3 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
                 displayRound === 2
-                  ? "bg-gradient-to-r from-amber-400/80 to-emerald-400/80 text-black"
+                  ? "bg-brand-blue/80 text-stone-100"
                   : "text-white/45 hover:text-white/70"
               }`}
             >
@@ -733,7 +776,11 @@ export function SwarmGraph({
       ) : null}
 
       {focusedGraphNode ? (
-        <NodeDetailPopup node={focusedGraphNode} popupRef={popupRef} />
+        <NodeDetailPopup
+          node={focusedGraphNode}
+          popupRef={popupRef}
+          onClose={() => setFocusedNode(null)}
+        />
       ) : null}
     </div>
   );

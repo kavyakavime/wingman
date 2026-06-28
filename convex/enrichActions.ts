@@ -29,62 +29,69 @@ async function enrichLeadBatch(
 
   let enrichedCount = 0;
 
-  for (const leadId of leadIds) {
-    await ctx.runMutation(internal.leads.setLeadEnrichmentLoading, { leadId });
+  try {
+    for (const leadId of leadIds) {
+      await ctx.runMutation(internal.leads.setLeadEnrichmentLoading, { leadId });
 
-    const lead = await ctx.runQuery(internal.leads.getLeadInternal, { leadId });
-    if (!lead) continue;
+      const lead = await ctx.runQuery(internal.leads.getLeadInternal, { leadId });
+      if (!lead) continue;
 
-    const linkedinUrl = lead.linkedinUrl;
-    if (!linkedinUrl) {
-      await ctx.runMutation(internal.leads.applyLeadEnrichment, {
-        leadId,
-        activitySource: "none",
-        enrichmentError: "No LinkedIn URL on this lead — run Fiber search first.",
-      });
-      continue;
-    }
+      const linkedinUrl = lead.linkedinUrl;
+      if (!linkedinUrl) {
+        await ctx.runMutation(internal.leads.applyLeadEnrichment, {
+          leadId,
+          activitySource: "none",
+          enrichmentError: "No LinkedIn URL on this lead — run Fiber search first.",
+        });
+        continue;
+      }
 
-    try {
-      const activity = await getLatestActivity(linkedinUrl, fiberKey);
+      try {
+        const activity = await getLatestActivity(linkedinUrl, fiberKey);
 
-      const enrichment = await enrichPersona(
-        {
-          personName: lead.personName,
-          companyName: lead.companyName,
-          role: lead.role,
-          socialSignal: lead.socialSignal,
-          linkedinUrl,
-          locality: lead.locality,
-          recentActivity: activity.recentActivity,
-        },
-        orangeKey,
-      );
+        const enrichment = await enrichPersona(
+          {
+            personName: lead.personName,
+            companyName: lead.companyName,
+            role: lead.role,
+            socialSignal: lead.socialSignal,
+            linkedinUrl,
+            locality: lead.locality,
+            recentActivity: activity.recentActivity,
+          },
+          orangeKey,
+        );
 
-      await ctx.runMutation(internal.leads.applyLeadEnrichment, {
-        leadId,
-        recentActivity: activity.recentActivity ?? undefined,
-        activitySource: activity.activitySource,
-        fundingStage: enrichment.fundingStage ?? undefined,
-        painSignal: enrichment.painSignal ?? undefined,
-        intentScore: enrichment.intentScore ?? undefined,
-      });
+        await ctx.runMutation(internal.leads.applyLeadEnrichment, {
+          leadId,
+          recentActivity: activity.recentActivity ?? undefined,
+          activitySource: activity.activitySource,
+          fundingStage: enrichment.fundingStage ?? undefined,
+          painSignal: enrichment.painSignal ?? undefined,
+          intentScore: enrichment.intentScore ?? undefined,
+        });
 
-      enrichedCount += 1;
-    } catch (error) {
-      const message =
-        error instanceof FiberApiError || error instanceof OrangeSliceApiError
-          ? error.message
-          : error instanceof Error
+        enrichedCount += 1;
+      } catch (error) {
+        const message =
+          error instanceof FiberApiError || error instanceof OrangeSliceApiError
             ? error.message
-            : "Unknown enrichment error";
+            : error instanceof Error
+              ? error.message
+              : "Unknown enrichment error";
 
-      await ctx.runMutation(internal.leads.applyLeadEnrichment, {
-        leadId,
-        activitySource: "none",
-        enrichmentError: message,
-      });
+        await ctx.runMutation(internal.leads.applyLeadEnrichment, {
+          leadId,
+          activitySource: "none",
+          enrichmentError: message,
+        });
+      }
     }
+  } finally {
+    await ctx.runMutation(internal.leads.finalizeEnrichmentBatch, {
+      leadIds,
+      errorMessage: "Enrichment timed out or was interrupted before this lead finished.",
+    });
   }
 
   return { enrichedCount, leadIds };

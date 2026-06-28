@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { SpreadsheetTable } from "./SpreadsheetTable";
 
@@ -28,6 +27,9 @@ type LeadSpreadsheetProps = {
   onToggleAll: (checked: boolean) => void;
   onEnrichAll: () => Promise<void>;
   isEnriching: boolean;
+  enrichComplete: boolean;
+  enrichPopupDismissed: boolean;
+  onEnrichPopupDismissedChange: (dismissed: boolean) => void;
 };
 
 function EnrichIcon() {
@@ -52,12 +54,14 @@ function EnrichIcon() {
 
 function EnrichPopup({
   leadCount,
+  doneCount,
   isEnriching,
   enrichInProgress,
   onEnrich,
   onDismiss,
 }: {
   leadCount: number;
+  doneCount: number;
   isEnriching: boolean;
   enrichInProgress: boolean;
   onEnrich: () => void;
@@ -84,7 +88,9 @@ function EnrichPopup({
             </p>
             <p className="mt-0.5 text-xs leading-relaxed text-stone-500">
               {enrichInProgress
-                ? "Pulling live signals for every row. This takes a moment."
+                ? doneCount >= leadCount
+                  ? "Finishing up…"
+                  : `Pulling live signals for every lead (${doneCount}/${leadCount}).`
                 : `${leadCount} leads loaded from Fiber — enrich before simulating.`}
             </p>
             {!enrichInProgress ? (
@@ -99,23 +105,21 @@ function EnrichPopup({
               </button>
             ) : null}
           </div>
-          {!enrichInProgress ? (
-            <button
-              type="button"
-              onClick={onDismiss}
-              className="shrink-0 rounded-md p-1 text-stone-400 transition hover:bg-stone-800 hover:text-stone-300"
-              aria-label="Dismiss"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path
-                  d="M18 6L6 18M6 6l12 12"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="shrink-0 rounded-md p-1 text-stone-400 transition hover:bg-stone-800 hover:text-stone-300"
+            aria-label="Dismiss"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M18 6L6 18M6 6l12 12"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -133,17 +137,13 @@ export function LeadSpreadsheet({
   onToggleAll,
   onEnrichAll,
   isEnriching,
+  enrichComplete,
+  enrichPopupDismissed,
+  onEnrichPopupDismissedChange,
 }: LeadSpreadsheetProps) {
-  const [enrichPopupDismissed, setEnrichPopupDismissed] = useState(false);
-
   const leadList = leads ?? [];
   const showMock = !hasLiveLeads && !hasSearched;
   const showEmpty = hasSearched && !hasLiveLeads && runStatus === "empty" && !isSearching;
-
-  const enrichComplete =
-    hasLiveLeads &&
-    leadList.length > 0 &&
-    leadList.every((l) => l.enrichmentStatus === "complete" || l.enrichmentStatus === "error");
 
   const canEnrich =
     hasLiveLeads &&
@@ -156,13 +156,12 @@ export function LeadSpreadsheet({
   const enrichInProgress =
     isEnriching || leadList.some((l) => l.enrichmentStatus === "loading");
 
-  const showEnrichPopup =
-    (canEnrich || enrichInProgress) && !enrichPopupDismissed;
+  const enrichDoneCount = leadList.filter(
+    (l) => l.enrichmentStatus === "complete" || l.enrichmentStatus === "error",
+  ).length;
 
-  const leadIdsKey = leadList.map((l) => l._id).join(",");
-  useEffect(() => {
-    setEnrichPopupDismissed(false);
-  }, [leadIdsKey]);
+  const showEnrichPopup =
+    !enrichComplete && (canEnrich || enrichInProgress) && !enrichPopupDismissed;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -180,10 +179,11 @@ export function LeadSpreadsheet({
         {showEnrichPopup ? (
           <EnrichPopup
             leadCount={leadList.length}
+            doneCount={enrichDoneCount}
             isEnriching={isEnriching}
             enrichInProgress={enrichInProgress}
             onEnrich={() => void onEnrichAll()}
-            onDismiss={() => setEnrichPopupDismissed(true)}
+            onDismiss={() => onEnrichPopupDismissedChange(true)}
           />
         ) : null}
 
@@ -215,6 +215,7 @@ export function LeadSpreadsheet({
             selectedIds={selectedIds}
             onToggleLead={onToggleLead}
             onToggleAll={onToggleAll}
+            selectionEnabled={hasLiveLeads && runStatus === "complete"}
           />
         )}
       </div>
