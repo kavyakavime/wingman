@@ -14,7 +14,7 @@ Wingman runs on a single integrated pipeline. Each stage depends on a specific p
 
 | Layer | What happens |
 |-------|----------------|
-| **Audience** | Fiber NLP search and Orange Slice LinkedIn B2B pull run in parallel; ICP resolves to named people with LinkedIn URLs |
+| **Audience** | Orange Slice workflow resolves ICP → target companies → decision-makers via LinkedIn B2B; checkpointed in a live spreadsheet |
 | **Enrichment** | Fiber supplies live LinkedIn activity; Orange Slice supplies pain signals, funding context, and firmographics |
 | **Simulation** | OpenAI GPT-4o runs a two-round persona swarm — solo reactions, then peer influence — on enriched profiles |
 | **Rewrite** | Cursor Cloud Agents produce one draft variant per segment, grounded in swarm objections |
@@ -31,7 +31,7 @@ The full path — search → dual enrich → multi-round swarm → segment rewri
 ICP in chat
     │
     ▼
-Hybrid audience search ── Fiber NLP + Orange Slice workflow (parallel)
+Hybrid audience search ── Orange Slice workflow (companies → getEmployeesFromLinkedin)
     │
     ▼
 Dual enrichment ── Fiber live LinkedIn activity + Orange Slice pain/funding
@@ -61,34 +61,33 @@ Send ── Orange Slice Gmail integration delivers the winning variant
 
 ### Fiber AI
 
-Fiber handles natural-language audience discovery and live LinkedIn signals.
+Fiber handles **live LinkedIn signal enrichment** — not audience search.
 
-When a user types an ICP like *"CEO and CTO of humanoid robot labs"*, Fiber's NLP search (`POST /v1/nlp-search/run`) returns real people with LinkedIn URLs, roles, and company context. During enrichment, Fiber's live activity APIs populate the **Live signal** column with the person's latest LinkedIn post or activity.
+When a user enriches selected leads, Fiber's activity APIs fetch the person's latest LinkedIn post or interaction and write it to the **Live signal** column. That signal feeds the swarm: persona agents cite `fiberSignal` alongside Orange Slice's `painSignal` when reacting, so objections trace back to real profile activity rather than invented context.
 
 | API | Location | Purpose |
 |-----|----------|---------|
-| NLP Search (`/v1/nlp-search/run`) | `lib/fiber.ts` → `lib/orangeSliceLeads.ts` | Plain-English ICP → people results; runs in parallel with Orange Slice |
 | Live activity fetch | `lib/fiber.ts` → `lib/enrichLead.ts` | Latest LinkedIn post or activity with signal kind |
-| Kitchen-sink lookup | `lib/fiber.ts` | Deterministic person resolution for demo personas |
+| Kitchen-sink lookup | `lib/fiber.ts` | Deterministic person resolution for locked demo personas |
 
-**Hybrid search.** Fiber NLP runs alongside Orange Slice's company-employee workflow. Results merge, dedupe, and pass through executive role filters, company matching, and OpenAI relevance scoring. Fiber contributes semantic ICP fit; Orange Slice contributes verified employment data from LinkedIn B2B.
+**Dual enrichment.** Orange Slice runs first on profile and company data (pain, funding, intent). Fiber adds the live layer on top. Both write to the same lead row — separate columns in the spreadsheet.
 
-**Split enrichment.** Fiber owns live LinkedIn activity; Orange Slice owns firmographic pain and outbound send. Both write to the same lead row — visible as separate columns in the spreadsheet.
-
-**Swarm grounding.** Persona agents cite `fiberSignal` and `painSignal` when reacting, so objections trace back to profile data rather than invented context.
+**Swarm grounding.** OpenAI persona agents reference enriched signals from both platforms when producing first-person reactions.
 
 ---
 
 ### Orange Slice
 
-Orange Slice is the workflow engine for audience pull, persona enrichment, run logging, and outbound send. Wingman embeds the [engineered workflow pattern](https://www.orangeslice.ai) Orange Slice documents for revenue ops: pull → enrich in loop → checkpoint → downstream action.
+Orange Slice is the **audience search and workflow engine** — plus persona enrichment, run logging, and outbound send. Wingman embeds the [engineered workflow pattern](https://www.orangeslice.ai) Orange Slice documents for revenue ops: pull → enrich in loop → checkpoint → downstream action.
+
+When a user types an ICP like *"CEO and CTO of humanoid robot labs"*, Orange Slice resolves target companies, pulls decision-makers via `getEmployeesFromLinkedin`, and streams results into Wingman while checkpointing each row in a live spreadsheet.
 
 | API | Location | Purpose |
 |-----|----------|---------|
 | `services.company.getEmployeesFromLinkedin` | `lib/orangeSliceWorkflow.ts` | Pull CEOs/CTOs/founders at target companies |
 | `services.company.linkedin.findUrl` + `enrich` | workflow + `lib/orangeslice.ts` | Company slugs, logos, funding context |
+| `services.ai.generateObject` | workflow + enrichment | ICP → company list; pain signal, intent score, funding stage |
 | `services.person.linkedin.enrich` | enrichment pipeline | Extended profile fields |
-| `services.ai.generateObject` | enrichment + ICP planning | Pain signal, intent score, funding stage |
 | `services.web.batchSearch` | `lib/orangeslice.ts` | Recent activity via site search when needed |
 | `ctx.createSpreadsheet` + `sheet.addRows` | `lib/orangeSliceWorkflow.ts` | Checkpointed live run log |
 | `integrations.gmail.sendEmail` | `lib/orangeslice.ts` → `convex/sendActions.ts` | Outbound send via connected Gmail |
@@ -98,7 +97,7 @@ Orange Slice is the workflow engine for audience pull, persona enrichment, run l
 
 **Inspectable runs.** Every search stores an Orange Slice spreadsheet ID on the Convex `audienceRuns` record. The same run is visible in Wingman and in the Orange Slice dashboard.
 
-**Closed loop.** The platform that sources the audience also delivers the message — segment rewrites go out through Orange Slice after swarm validation.
+**Closed loop.** Orange Slice sources the audience, enriches personas, and delivers the message — segment rewrites go out through Gmail after swarm validation.
 
 ---
 
@@ -154,69 +153,9 @@ Leads stream into the spreadsheet during search. Swarm reactions populate the gr
 
 ---
 
-## Architecture
-
-```mermaid
-flowchart TB
-  subgraph UI["Next.js UI"]
-    Chat[Chat workflow]
-    Sheet[Lead spreadsheet]
-    Graph[3D swarm graph]
-    Rewrites[Rewrite tab]
-  end
-
-  subgraph Convex["Convex backend"]
-    FA[fiberActions.fetchAudience]
-    EA[enrichActions.enrichLeads]
-    SA[swarmActions.runSwarm]
-    RA[rewriteActions.generateSegmentRewrites]
-    SEA[sendActions.sendWinningVariants]
-  end
-
-  subgraph Fiber["Fiber AI"]
-    FNLP[NLP search]
-    FLA[Live activity]
-  end
-
-  subgraph OS["Orange Slice"]
-    WF[Employee workflow]
-    ENR[Person + company enrich]
-    SS[Spreadsheet checkpoint]
-    GM[Gmail send]
-  end
-
-  subgraph OAI["OpenAI GPT-4o"]
-    SW[Swarm reactions]
-    PEER[Peer round 2]
-    ICPF[ICP relevance filter]
-  end
-
-  subgraph Cursor["Cursor Cloud Agents"]
-    RW[Segment rewrites]
-  end
-
-  Chat --> FA
-  FA --> FNLP
-  FA --> WF
-  WF --> SS
-  Sheet --> EA
-  EA --> FLA
-  EA --> ENR
-  Chat --> SA
-  SA --> SW
-  SA --> PEER
-  Graph --> SA
-  RA --> RW
-  RW --> SA
-  Rewrites --> SEA
-  SEA --> GM
-```
-
----
-
 ## Design principles
 
-**Real profiles, not synthetic panels.** Fiber and Orange Slice resolve ICP text to named executives with LinkedIn URLs. The swarm simulates against those profiles.
+**Real profiles, not synthetic panels.** Orange Slice resolves ICP text to named executives with LinkedIn URLs; Fiber adds live activity on enrich. The swarm simulates against those profiles.
 
 **Segment-level feedback.** Reply predictions and objections are grouped by segment — scaled, early_stage, vertical_specialist — rather than collapsed into one aggregate score.
 
@@ -262,7 +201,7 @@ app/                    Next.js App Router
 components/
   workspace/            Chat, spreadsheet, swarm graph, rewrite tab
 convex/
-  fiberActions.ts       Hybrid audience search action
+  fiberActions.ts       Orange Slice audience search action
   enrichActions.ts      Fiber + Orange Slice dual enrich
   swarmActions.ts       OpenAI swarm (round 1 + peer round 2)
   rewriteActions.ts     Cursor segment rewrites + re-test
@@ -270,7 +209,7 @@ convex/
   leads.ts              Runs, leads, enrichment mutations
   schema.ts             Typed tables + indexes
 lib/
-  fiber.ts              Fiber NLP search + live activity
+  fiber.ts              Fiber live activity enrichment
   orangeSliceWorkflow.ts Orange Slice engineered workflow
   orangeSliceLeads.ts   Hybrid search merge + ICP filter
   orangeslice.ts        Enrichment + send helpers
