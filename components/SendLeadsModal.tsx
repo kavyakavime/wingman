@@ -361,9 +361,6 @@ export function SendLeadsModal({
                         disabled={row.sending}
                         className={inputClass}
                       />
-                      <span className="mt-1 block text-[10px] text-stone-500">
-                        Estimated from name + company — edit before sending.
-                      </span>
                     </label>
                   )}
                   <label className="block text-xs font-medium text-stone-400">

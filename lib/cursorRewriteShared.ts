@@ -15,7 +15,7 @@ export type RewriteForSegmentResult = {
   generatedVia: RewriteGeneratedVia;
 };
 
-export const REWRITE_TIMEOUT_MS = 45_000;
+export const REWRITE_TIMEOUT_MS = 90_000;
 /** Cloud agents (SDK or REST) often need longer than a single GPT-4o call. */
 export const CURSOR_REWRITE_TIMEOUT_MS = 60_000;
 
@@ -143,33 +143,82 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): 
   });
 }
 
+const SEGMENT_COPY_GUIDANCE: Record<PersonaSegment, string> = {
+  scaled:
+    "Enterprise tone: lead with measurable ROI, implementation risk reduction, and proof this fits an established operator — not startup hype.",
+  early_stage:
+    "Founder tone: acknowledge scrappiness and time pressure; lead with a concrete workflow win in the first two sentences before the ask.",
+  vertical_specialist:
+    "Domain-expert tone: use vertical-specific language; show you understand their niche constraints, not generic SaaS benefits.",
+};
+
 const REWRITE_SYSTEM_PROMPT = [
-  "You rewrite cold outbound emails for B2B founders and executives.",
-  "Return ONLY the finished email starting with Subject: on line 1.",
-  "Every rewrite must meaningfully change the subject, opening, and argument — not synonym swaps.",
-  "No commentary, no markdown fences.",
+  "You are an elite B2B cold-outbound copywriter.",
+  "You rewrite emails to neutralize specific objections surfaced by a simulation swarm.",
+  "Every rewrite must change the subject line, opening hook, and core argument — never synonym swaps or light edits.",
+  "Preserve factual claims from the original; do not invent customers, metrics, or funding rounds.",
 ].join(" ");
 
-export async function rewriteViaOpenAi(prompt: string, apiKey: string): Promise<string> {
+function formatDraftFromParts(subject: string, body: string): string {
+  return `Subject: ${subject.trim()}\n\n${body.trim()}`;
+}
+
+function normalizeForCompare(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** Reject rewrites that barely changed the original. */
+export function rewriteDiffersEnough(originalDraft: string, rewrittenDraft: string): boolean {
+  try {
+    const original = parseRewriteDraft(originalDraft);
+    const rewritten = parseRewriteDraft(rewrittenDraft);
+    if (normalizeForCompare(original.subject) === normalizeForCompare(rewritten.subject)) {
+      return false;
+    }
+    const origWords = new Set(normalizeForCompare(original.body).split(" ").filter(Boolean));
+    const revWords = normalizeForCompare(rewritten.body).split(" ").filter(Boolean);
+    if (revWords.length === 0) return false;
+    const overlap = revWords.filter((w) => origWords.has(w)).length / revWords.length;
+    return overlap < 0.72;
+  } catch {
+    return true;
+  }
+}
+
+async function openAiChat(
+  apiKey: string,
+  messages: Array<{ role: "system" | "user"; content: string }>,
+  options?: { temperature?: number; jsonSchema?: object },
+): Promise<string> {
+  const body: Record<string, unknown> = {
+    model: "gpt-4o",
+    messages,
+    temperature: options?.temperature ?? 0.45,
+  };
+
+  if (options?.jsonSchema) {
+    body.response_format = {
+      type: "json_schema",
+      json_schema: {
+        name: "email_rewrite",
+        strict: true,
+        schema: options.jsonSchema,
+      },
+    };
+  }
+
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: REWRITE_SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.55,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`OpenAI rewrite failed (${response.status}): ${body.slice(0, 300)}`);
+    const errBody = await response.text();
+    throw new Error(`OpenAI rewrite failed (${response.status}): ${errBody.slice(0, 300)}`);
   }
 
   const data = (await response.json()) as {
@@ -179,8 +228,146 @@ export async function rewriteViaOpenAi(prompt: string, apiKey: string): Promise<
   if (!text) {
     throw new Error("OpenAI rewrite returned empty text");
   }
+  return text;
+}
 
-  return validateRewriteDraft(text);
+export async function rewriteViaOpenAi(
+  prompt: string,
+  apiKey: string,
+  context?: {
+    segment: PersonaSegment;
+    originalDraft: string;
+    objections?: SegmentObjection[];
+    dominantSentiment?: SwarmSentiment | null;
+  },
+): Promise<string> {
+  const segment = context?.segment;
+  const originalDraft = context?.originalDraft?.trim() ?? "";
+  const objections = context?.objections ?? [];
+  const dominantSentiment = context?.dominantSentiment ?? "objecting";
+
+  const userPrompt = [
+    prompt,
+    segment ? `\nSegment copy guidance: ${SEGMENT_COPY_GUIDANCE[segment]}` : "",
+    objections.length > 0
+      ? `\nYou MUST explicitly neutralize these objections in the body (not a single vague line):\n${objections
+          .slice(0, 4)
+          .map(
+            (o, i) =>
+              `${i + 1}. ${o.personName}: "${o.reasoningText || o.citedSignal}"`,
+          )
+          .join("\n")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const draftJson = await openAiChat(
+    apiKey,
+    [
+      { role: "system", content: REWRITE_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
+    ],
+    {
+      temperature: 0.5,
+      jsonSchema: {
+        type: "object",
+        properties: {
+          subject: { type: "string" },
+          body: { type: "string" },
+          openingHook: {
+            type: "string",
+            description: "One sentence summarizing how the opening addresses the top objection",
+          },
+        },
+        required: ["subject", "body", "openingHook"],
+        additionalProperties: false,
+      },
+    },
+  );
+
+  const parsed = JSON.parse(draftJson) as { subject?: string; body?: string };
+  if (!parsed.subject?.trim() || !parsed.body?.trim()) {
+    throw new Error("OpenAI rewrite returned incomplete subject/body");
+  }
+
+  let draft = formatDraftFromParts(parsed.subject, parsed.body);
+  draft = validateRewriteDraft(draft);
+
+  if (originalDraft && !rewriteDiffersEnough(originalDraft, draft)) {
+    const stricter = await openAiChat(
+      apiKey,
+      [
+        { role: "system", content: REWRITE_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: `${userPrompt}
+
+Your prior draft was too similar to the original. Write a NEW email with a different subject, a different opening sentence, and a restructured argument. Dominant swarm sentiment: ${dominantSentiment}.`,
+        },
+      ],
+      {
+        temperature: 0.65,
+        jsonSchema: {
+          type: "object",
+          properties: {
+            subject: { type: "string" },
+            body: { type: "string" },
+          },
+          required: ["subject", "body"],
+          additionalProperties: false,
+        },
+      },
+    );
+    const retry = JSON.parse(stricter) as { subject?: string; body?: string };
+    if (retry.subject?.trim() && retry.body?.trim()) {
+      draft = validateRewriteDraft(formatDraftFromParts(retry.subject, retry.body));
+    }
+  }
+
+  if (objections.length > 0) {
+    const refinedJson = await openAiChat(
+      apiKey,
+      [
+        {
+          role: "system",
+          content:
+            "You polish cold emails. Keep subject and length similar. Improve clarity and objection handling only — do not add invented facts.",
+        },
+        {
+          role: "user",
+          content: `Polish this rewrite so each objection below is clearly addressed in natural prose (not bullet points).
+
+Objections:
+${objections
+  .slice(0, 4)
+  .map((o) => `- ${o.personName}: ${o.reasoningText || o.citedSignal}`)
+  .join("\n")}
+
+Email:
+${draft}`,
+        },
+      ],
+      {
+        temperature: 0.35,
+        jsonSchema: {
+          type: "object",
+          properties: {
+            subject: { type: "string" },
+            body: { type: "string" },
+          },
+          required: ["subject", "body"],
+          additionalProperties: false,
+        },
+      },
+    );
+    const refined = JSON.parse(refinedJson) as { subject?: string; body?: string };
+    if (refined.subject?.trim() && refined.body?.trim()) {
+      draft = validateRewriteDraft(formatDraftFromParts(refined.subject, refined.body));
+    }
+  }
+
+  return draft;
 }
 
 async function rewriteWithRetry(
@@ -223,33 +410,12 @@ export async function rewriteForSegmentWithCursorFn(
   });
   const cursorApiKey = options?.cursorApiKey ?? process.env.CURSOR_API_KEY;
   const openaiApiKey = options?.openaiApiKey ?? process.env.OPENAI_API_KEY;
-
-  if (openaiApiKey) {
-    try {
-      console.log(`[rewriteForSegment] segment=${segment} path=openai attempting…`);
-      const rewrittenDraft = await rewriteWithRetry(
-        () =>
-          withTimeout(
-            rewriteViaOpenAi(prompt, openaiApiKey),
-            REWRITE_TIMEOUT_MS,
-            "OpenAI rewrite",
-          ),
-        segment,
-      );
-      console.log(
-        `[rewriteForSegment] segment=${segment} path=openai success (${rewrittenDraft.length} chars)`,
-      );
-      return { rewrittenDraft, generatedVia: "openai_fallback" };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(
-        `[rewriteForSegment] segment=${segment} path=openai failed: ${message}`,
-      );
-      if (!cursorApiKey) {
-        throw error instanceof Error ? error : new Error(message);
-      }
-    }
-  }
+  const openAiContext = {
+    segment,
+    originalDraft: draft,
+    objections: options?.objections,
+    dominantSentiment: options?.dominantSentiment,
+  };
 
   if (cursorApiKey) {
     try {
@@ -269,6 +435,35 @@ export async function rewriteForSegmentWithCursorFn(
       return { rewrittenDraft, generatedVia: "cursor_sdk" };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[rewriteForSegment] segment=${segment} path=cursor_sdk failed: ${message}`,
+      );
+      if (!openaiApiKey) {
+        throw new Error(
+          `Rewrite failed for ${SEGMENT_LABELS[segment]}: ${message}`,
+        );
+      }
+    }
+  }
+
+  if (openaiApiKey) {
+    try {
+      console.log(`[rewriteForSegment] segment=${segment} path=openai_fallback attempting…`);
+      const rewrittenDraft = await rewriteWithRetry(
+        () =>
+          withTimeout(
+            rewriteViaOpenAi(prompt, openaiApiKey, openAiContext),
+            REWRITE_TIMEOUT_MS,
+            "OpenAI rewrite",
+          ),
+        segment,
+      );
+      console.log(
+        `[rewriteForSegment] segment=${segment} path=openai_fallback success (${rewrittenDraft.length} chars)`,
+      );
+      return { rewrittenDraft, generatedVia: "openai_fallback" };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       throw new Error(
         `Rewrite failed for ${SEGMENT_LABELS[segment]}: ${message}`,
       );
@@ -276,6 +471,6 @@ export async function rewriteForSegmentWithCursorFn(
   }
 
   throw new Error(
-    "Set OPENAI_API_KEY (recommended) or CURSOR_API_KEY in Convex env before generating rewrites.",
+    "Set CURSOR_API_KEY and/or OPENAI_API_KEY in Convex env before generating rewrites.",
   );
 }
