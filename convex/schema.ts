@@ -1,6 +1,18 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+export const personaSegment = v.union(
+  v.literal("scaled"),
+  v.literal("early_stage"),
+  v.literal("vertical_specialist"),
+);
+
+export const agentSentiment = v.union(
+  v.literal("positive"),
+  v.literal("neutral"),
+  v.literal("objecting"),
+);
+
 export default defineSchema({
   pings: defineTable({
     message: v.string(),
@@ -34,6 +46,7 @@ export default defineSchema({
     linkedinUrl: v.optional(v.string()),
     locality: v.optional(v.string()),
     fiberSearchId: v.optional(v.string()),
+    segment: v.optional(personaSegment),
     isLockedDemo: v.optional(v.boolean()),
     enrichmentStatus: v.optional(
       v.union(
@@ -60,5 +73,22 @@ export default defineSchema({
   })
     .index("by_runId", ["runId"])
     .index("by_runId_createdAt", ["runId", "createdAt"])
-    .index("by_isLockedDemo", ["isLockedDemo"]),
+    .index("by_isLockedDemo", ["isLockedDemo"])
+    .index("by_segment", ["segment"]),
+
+  /** Hour 5 swarm writes here; schema locked in hour 4. */
+  agent_reactions: defineTable({
+    leadId: v.id("leads"),
+    segment: v.optional(personaSegment),
+    sentiment: agentSentiment,
+    reasoningText: v.string(),
+    citedSignal: v.string(),
+    /** 1 = initial solo reaction; 2 = peer-influence re-evaluation (hour 6.5). */
+    round: v.optional(v.union(v.literal(1), v.literal(2))),
+    createdAt: v.number(),
+  })
+    .index("by_leadId", ["leadId"])
+    .index("by_segment", ["segment"])
+    .index("by_leadId_createdAt", ["leadId", "createdAt"])
+    .index("by_leadId_round", ["leadId", "round"]),
 });

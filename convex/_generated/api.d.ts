@@ -8,10 +8,15 @@
  * @module
  */
 
+import type * as agentReactions from "../agentReactions.js";
 import type * as enrichActions from "../enrichActions.js";
 import type * as fiberActions from "../fiberActions.js";
 import type * as leads from "../leads.js";
 import type * as ping from "../ping.js";
+import type * as seedDemo from "../seedDemo.js";
+import type * as swarmActions from "../swarmActions.js";
+import type * as swarmHelpers from "../swarmHelpers.js";
+import type * as swarmRound2 from "../swarmRound2.js";
 
 import type {
   ApiFromModules,
@@ -20,10 +25,15 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  agentReactions: typeof agentReactions;
   enrichActions: typeof enrichActions;
   fiberActions: typeof fiberActions;
   leads: typeof leads;
   ping: typeof ping;
+  seedDemo: typeof seedDemo;
+  swarmActions: typeof swarmActions;
+  swarmHelpers: typeof swarmHelpers;
+  swarmRound2: typeof swarmRound2;
 }>;
 
 /**

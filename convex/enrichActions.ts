@@ -1,7 +1,6 @@
 "use node";
 
 import { FiberApiError, getLatestActivity } from "../lib/fiber";
-import { LOCKED_DEMO_PERSONAS } from "../lib/lockedPersonas";
 import { OrangeSliceApiError, enrichPersona } from "../lib/orangeslice";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";

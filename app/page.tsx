@@ -1,11 +1,12 @@
 import { AudienceSearch } from "@/components/AudienceSearch";
 import { LockedPersonasPanel } from "@/components/LockedPersonasPanel";
 import { PingStatus } from "@/components/PingStatus";
+import { SwarmTestPanel } from "@/components/SwarmTestPanel";
 
 export default function Home() {
   return (
     <div className="flex min-h-full flex-col items-center bg-zinc-50 px-6 py-16 font-sans dark:bg-black">
-      <main className="w-full max-w-2xl space-y-10">
+      <main className="w-full max-w-4xl space-y-10">
         <div className="space-y-3 text-center">
           <p className="text-sm font-medium uppercase tracking-widest text-zinc-500">
             YC Hackathon
@@ -22,6 +23,8 @@ export default function Home() {
         <AudienceSearch />
 
         <LockedPersonasPanel />
+
+        <SwarmTestPanel />
 
         <details className="rounded-lg border border-zinc-200 dark:border-zinc-800">
           <summary className="cursor-pointer px-4 py-3 text-sm text-zinc-500">

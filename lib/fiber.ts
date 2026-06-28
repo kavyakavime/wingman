@@ -130,6 +130,71 @@ function personCompanyName(person: FiberPerson): string | undefined {
   return currentExp?.company_name?.trim() || undefined;
 }
 
+/** Case-insensitive mutual contains match for lookup key vs Fiber company string. */
+function companyNamesMatch(lookupCompany: string, experienceCompany: string): boolean {
+  const normalize = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const lookup = normalize(lookupCompany);
+  const experience = normalize(experienceCompany);
+  if (!lookup || !experience) return false;
+  return lookup.includes(experience) || experience.includes(lookup);
+}
+
+type FiberExperience = NonNullable<FiberPerson["experiences"]>[number];
+
+function findExperienceForLookupCompany(
+  person: FiberPerson,
+  lookupCompanyName: string,
+): FiberExperience | undefined {
+  return person.experiences?.find(
+    (entry) =>
+      entry.company_name?.trim() &&
+      companyNamesMatch(lookupCompanyName, entry.company_name),
+  );
+}
+
+/**
+ * When forceCompanyMatch keyed on lookupCompanyName, prefer the matching
+ * experiences[] row over current_job (handles concurrent current roles).
+ */
+function personCompanyAndRoleForLookup(
+  person: FiberPerson,
+  lookupCompanyName: string,
+): { companyName?: string; role?: string } {
+  const matched = findExperienceForLookupCompany(person, lookupCompanyName);
+  if (matched) {
+    const company = matched.company_name?.trim();
+    const title = matched.title?.trim();
+    return {
+      companyName: company,
+      role: title && company ? `${title} at ${company}` : title ?? company,
+    };
+  }
+
+  return {
+    companyName: personCompanyName(person),
+    role: personRole(person),
+  };
+}
+
+function mapPersonForCompanyLookup(
+  person: FiberPerson,
+  lookupCompanyName: string,
+  searchId: string,
+): FiberAudienceLead {
+  const { companyName, role } = personCompanyAndRoleForLookup(person, lookupCompanyName);
+  return {
+    resultType: "people",
+    personName: personDisplayName(person),
+    companyName,
+    role,
+    socialSignal: personSocialSignal(person),
+    linkedinUrl: person.url?.trim() || undefined,
+    locality: person.locality?.trim() || undefined,
+    fiberSearchId: searchId,
+  };
+}
+
 function personSocialSignal(person: FiberPerson): string | undefined {
   const signals: string[] = [];
   if (person.headline?.trim()) signals.push(person.headline.trim());
@@ -299,6 +364,69 @@ export async function searchAudience(
     leads: mapCompanies(output.searchId, companies),
     notices,
   };
+}
+
+// ── Deterministic person lookup (kitchen-sink) ────────────────────────────────
+// @see https://api.fiber.ai/ai-docs/KitchenSinkProfile.md  (POST /v1/kitchen-sink/person)
+
+export type PersonLookupInput = {
+  personName: string;
+  companyName: string;
+  companyDomain?: string;
+};
+
+/**
+ * Resolve a specific person by name + current company via Fiber kitchen-sink.
+ * Uses forceCompanyMatch so name-only collisions are rejected.
+ */
+export async function lookupPersonByNameAndCompany(
+  input: PersonLookupInput,
+  apiKey: string,
+): Promise<FiberAudienceLead> {
+  const personName = input.personName.trim();
+  const companyName = input.companyName.trim();
+  if (!personName || !companyName) {
+    throw new FiberApiError(
+      "personName and companyName are required for kitchen-sink lookup.",
+      "api_error",
+    );
+  }
+
+  const body: Record<string, unknown> = {
+    personName: { value: personName },
+    companyName: { value: companyName },
+    forceCompanyMatch: true,
+    numProfiles: 1,
+  };
+
+  const domain = input.companyDomain?.trim();
+  if (domain) {
+    body.companyDomain = { value: domain };
+  }
+
+  const response = await fiberPost<{ output?: { data?: FiberPerson[] | null } }>(
+    apiKey,
+    "/v1/kitchen-sink/person",
+    body,
+  );
+
+  const people = response.output?.data ?? [];
+  if (people.length === 0) {
+    throw new FiberApiError(
+      `No Fiber profile found for "${personName}" at "${companyName}".`,
+      "api_error",
+    );
+  }
+
+  const person = people[0];
+  if (!person) {
+    throw new FiberApiError(
+      `Fiber returned an empty profile for "${personName}" at "${companyName}".`,
+      "api_error",
+    );
+  }
+
+  return mapPersonForCompanyLookup(person, companyName, "kitchen-sink");
 }
 
 // ── LinkedIn live activity ───────────────────────────────────────────────────

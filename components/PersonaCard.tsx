@@ -1,6 +1,11 @@
 "use client";
 
 import type { Doc } from "../convex/_generated/dataModel";
+import {
+  SEGMENT_LABELS,
+  SEGMENT_STYLES,
+  type PersonaSegment,
+} from "../lib/segments";
 
 function activityLabel(source: Doc<"leads">["activitySource"]): string {
   if (source === "latest_activities") return "Latest LinkedIn activity (Fiber)";
@@ -8,18 +13,37 @@ function activityLabel(source: Doc<"leads">["activitySource"]): string {
   return "No recent public activity";
 }
 
+export function SegmentBadge({ segment }: { segment: PersonaSegment }) {
+  const styles = SEGMENT_STYLES[segment];
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${styles.badge}`}
+    >
+      {SEGMENT_LABELS[segment]}
+    </span>
+  );
+}
+
 export function PersonaCard({ lead }: { lead: Doc<"leads"> }) {
   const isLoading = lead.enrichmentStatus === "loading";
   const hasActivity =
     lead.recentActivity && lead.activitySource && lead.activitySource !== "none";
+  const segmentStyles = lead.segment ? SEGMENT_STYLES[lead.segment] : null;
 
   return (
-    <article className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+    <article
+      className={`rounded-xl border bg-white p-5 shadow-sm dark:bg-zinc-950 ${
+        segmentStyles?.border ?? "border-zinc-200 dark:border-zinc-800"
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            {lead.personName ?? "Unknown"}
-          </h3>
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+              {lead.personName ?? "Unknown"}
+            </h3>
+            {lead.segment && <SegmentBadge segment={lead.segment} />}
+          </div>
           {lead.role && (
             <p className="text-sm text-zinc-600 dark:text-zinc-400">{lead.role}</p>
           )}

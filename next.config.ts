@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  transpilePackages: ["three", "react-force-graph-3d", "3d-force-graph"],
 };
 
 export default nextConfig;

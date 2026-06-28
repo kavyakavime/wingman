@@ -1,9 +1,17 @@
 "use client";
 
 import { useAction, useQuery } from "convex/react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "../convex/_generated/api";
+import type { Doc } from "../convex/_generated/dataModel";
 import { LOCKED_DEMO_PERSONAS } from "../lib/lockedPersonas";
+import {
+  SEGMENT_DESCRIPTIONS,
+  SEGMENT_LABELS,
+  SEGMENT_ORDER,
+  SEGMENT_STYLES,
+  type PersonaSegment,
+} from "../lib/segments";
 import { PersonaCard } from "./PersonaCard";
 
 export function LockedPersonasPanel() {
@@ -12,6 +20,22 @@ export function LockedPersonasPanel() {
 
   const lockedPersonas = useQuery(api.leads.listLockedPersonas);
   const enrichLockedPersonas = useAction(api.enrichActions.enrichLockedPersonas);
+
+  const grouped = useMemo(() => {
+    if (!lockedPersonas) return null;
+
+    const buckets: Record<PersonaSegment, Doc<"leads">[]> = {
+      scaled: [],
+      early_stage: [],
+      vertical_specialist: [],
+    };
+
+    for (const lead of lockedPersonas) {
+      if (lead.segment) buckets[lead.segment].push(lead);
+    }
+
+    return buckets;
+  }, [lockedPersonas]);
 
   const anyLoading =
     isEnriching ||
@@ -38,8 +62,8 @@ export function LockedPersonasPanel() {
           Locked demo personas
         </h2>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Six real profiles for the demo — Fiber live activity + Orange Slice
-          enrichment. Hour 5&apos;s swarm will reason over this data.
+          Six real profiles grouped by segment — the same tags hour 6&apos;s graph
+          will cluster on.
         </p>
         <p className="text-xs text-zinc-500">
           {LOCKED_DEMO_PERSONAS.map((p) => p.personName).join(" · ")}
@@ -68,13 +92,32 @@ export function LockedPersonasPanel() {
           Click &ldquo;Enrich locked personas&rdquo; to seed and enrich the six
           demo profiles.
         </p>
-      ) : (
-        <div className="grid gap-4">
-          {lockedPersonas.map((lead) => (
-            <PersonaCard key={lead._id} lead={lead} />
-          ))}
+      ) : grouped ? (
+        <div className="space-y-8">
+          {SEGMENT_ORDER.map((segment) => {
+            const leads = grouped[segment];
+            if (leads.length === 0) return null;
+            const styles = SEGMENT_STYLES[segment];
+            return (
+              <div key={segment} className="space-y-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className={`text-sm font-semibold ${styles.header}`}>
+                    {SEGMENT_LABELS[segment]}
+                  </h3>
+                  <span className="text-xs text-zinc-500">
+                    {SEGMENT_DESCRIPTIONS[segment]} · {leads.length}
+                  </span>
+                </div>
+                <div className="grid gap-4">
+                  {leads.map((lead) => (
+                    <PersonaCard key={lead._id} lead={lead} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

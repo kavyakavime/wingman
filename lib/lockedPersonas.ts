@@ -1,11 +1,11 @@
-/** Six locked demo personas — matched by name against leads from hour 2 Fiber search. */
+/** Six locked demo personas — resolved deterministically via Fiber kitchen-sink lookup. */
 export const LOCKED_DEMO_PERSONAS = [
-  { personName: "Ian Bernstein" },
-  { personName: "Frederik Fleck" },
-  { personName: "Claire Delaunay" },
-  { personName: "Peggy Johnson" },
-  { personName: "Guy Altagar" },
-  { personName: "Dave Grant" },
+  { personName: "Ian Bernstein", companyName: "Hackerbot Industries" },
+  { personName: "Frederik Fleck", companyName: "RoboService" },
+  { personName: "Claire Delaunay", companyName: "OPALIN" },
+  { personName: "Peggy Johnson", companyName: "Agility Robotics" },
+  { personName: "Guy Altagar", companyName: "Unlimited Robotics" },
+  { personName: "Dave Grant", companyName: "PickNik Robotics" },
 ] as const;
 
 export type LockedDemoPersona = (typeof LOCKED_DEMO_PERSONAS)[number];
@@ -24,5 +24,19 @@ export function isLockedPersonaName(name: string | undefined): boolean {
   const normalized = normalizePersonName(name);
   return LOCKED_DEMO_PERSONAS.some(
     (p) => normalizePersonName(p.personName) === normalized,
+  );
+}
+
+/** Swarm agents must not cite recentActivity for these personas (unrelated feed noise). */
+export const IGNORE_RECENT_ACTIVITY_PERSONAS = [
+  "Frederik Fleck",
+  "Guy Altagar",
+] as const;
+
+export function shouldIgnoreRecentActivity(personName: string | undefined): boolean {
+  if (!personName) return false;
+  const normalized = normalizePersonName(personName);
+  return IGNORE_RECENT_ACTIVITY_PERSONAS.some(
+    (p) => normalizePersonName(p) === normalized,
   );
 }
