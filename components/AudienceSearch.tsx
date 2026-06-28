@@ -166,7 +166,7 @@ export function AudienceSearch() {
       {isLoading && (
         <div className="flex items-center gap-3 rounded-lg border border-stone-800 bg-stone-900/40 px-4 py-4 text-sm text-stone-400">
           <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-stone-800 border-t-stone-300" />
-          Querying Fiber for live matches…
+          Querying for live matches...
           {leads && leads.length > 0 && (
             <span className="ml-auto font-mono text-xs text-stone-500">
               {leads.length} found so far
@@ -185,8 +185,7 @@ export function AudienceSearch() {
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs text-stone-500">
             <span>
-              {run?.resultType === "companies" ? "Companies" : "People"} from
-              Fiber
+              {run?.resultType === "companies" ? "Companies" : "People"} found
             </span>
             <span className="font-mono">
               {leads.length}

@@ -7,11 +7,16 @@ export type LeadRow = {
   _id: Id<"leads">;
   personName?: string | null;
   companyName?: string | null;
+  companyLogoUrl?: string | null;
+  companyLinkedinUrl?: string | null;
   role?: string | null;
   locality?: string | null;
   linkedinUrl?: string | null;
   painSignal?: string | null;
   recentActivity?: string | null;
+  fiberSignal?: string | null;
+  fiberSignalKind?: string | null;
+  fiberSignalSource?: "latest_activities" | "posts" | "none" | null;
   enrichmentStatus?: "pending" | "loading" | "complete" | "error" | null;
   enrichmentError?: string | null;
 };
@@ -21,6 +26,7 @@ type LeadSpreadsheetProps = {
   hasSearched: boolean;
   isSearching: boolean;
   runStatus: "loading" | "complete" | "empty" | "error" | null;
+  searchError?: string | null;
   leads: LeadRow[] | undefined;
   selectedIds: Set<Id<"leads">>;
   onToggleLead: (id: Id<"leads">) => void;
@@ -91,7 +97,7 @@ function EnrichPopup({
                 ? doneCount >= leadCount
                   ? "Finishing up…"
                   : `Pulling live signals for every lead (${doneCount}/${leadCount}).`
-                : `${leadCount} leads loaded from Fiber — enrich before simulating.`}
+                : `${leadCount} leads loaded — enrich with Fiber + Orange Slice before simulating.`}
             </p>
             {!enrichInProgress ? (
               <button
@@ -134,6 +140,7 @@ export function LeadSpreadsheet({
   hasSearched,
   isSearching,
   runStatus,
+  searchError,
   leads,
   selectedIds,
   onToggleLead,
@@ -145,14 +152,15 @@ export function LeadSpreadsheet({
   onEnrichPopupDismissedChange,
 }: LeadSpreadsheetProps) {
   const leadList = leads ?? [];
-  const showMock = !hasLiveLeads && !hasSearched;
-  const showEmpty = hasSearched && !hasLiveLeads && runStatus === "empty" && !isSearching;
+  const showMock = leadList.length === 0 && (!hasSearched || isSearching);
+  const showEmpty =
+    hasSearched && !isSearching && leadList.length === 0 && runStatus === "empty";
+  const showSearchError =
+    hasSearched && !isSearching && leadList.length === 0 && runStatus === "error";
 
   const canEnrich =
     hasLiveLeads &&
-    runStatus === "complete" &&
     leadList.length > 0 &&
-    !isSearching &&
     !enrichComplete &&
     leadList.some((l) => l.enrichmentStatus !== "complete" && l.enrichmentStatus !== "loading");
 
@@ -168,10 +176,10 @@ export function LeadSpreadsheet({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {isSearching && (
+      {isSearching && leadList.length === 0 && (
         <div className="flex shrink-0 items-center gap-2 border-b border-stone-800 bg-stone-900/40 px-4 py-2.5 text-xs text-stone-400">
           <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-stone-800 border-t-stone-300" />
-          Querying Fiber for live matches…
+          Querying for live matches...
           {leadList.length > 0 ? (
             <span className="ml-auto font-mono">{leadList.length} found</span>
           ) : null}
@@ -198,28 +206,28 @@ export function LeadSpreadsheet({
           </div>
         ) : null}
 
-        {showMock || (hasSearched && isSearching && !hasLiveLeads) ? (
-          <>
-            {hasSearched && isSearching && !hasLiveLeads ? (
-              <div className="absolute inset-x-0 top-0 z-10 border-b border-brand-blue/20 bg-brand-blue/5 px-4 py-2 text-center text-xs text-brand-blue-light">
-                Replacing preview with live Fiber results…
-              </div>
-            ) : null}
-            <SpreadsheetTable mode="mock" isPreview={!hasSearched} />
-          </>
-        ) : showEmpty ? (
-          <div className="flex h-full items-center justify-center p-8 text-center text-sm text-stone-400">
-            No matches — try broadening your ICP in chat.
-          </div>
-        ) : (
+        {showMock ? (
+          <SpreadsheetTable mode="mock" isPreview={!hasSearched} />
+        ) : leadList.length > 0 ? (
           <SpreadsheetTable
             mode="live"
             liveRows={leadList}
             selectedIds={selectedIds}
             onToggleLead={onToggleLead}
             onToggleAll={onToggleAll}
-            selectionEnabled={hasLiveLeads && runStatus === "complete"}
+            selectionEnabled={hasLiveLeads}
           />
+        ) : showEmpty ? (
+          <div className="flex h-full items-center justify-center p-8 text-center text-sm text-stone-400">
+            No matches — try broadening your ICP in chat.
+          </div>
+        ) : showSearchError ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-sm text-red-400">
+            <p>Search failed — Orange Slice could not return leads for this ICP.</p>
+            {searchError ? <p className="max-w-md text-xs text-stone-500">{searchError}</p> : null}
+          </div>
+        ) : (
+          <SpreadsheetTable mode="mock" isPreview />
         )}
       </div>
     </div>

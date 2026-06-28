@@ -455,6 +455,8 @@ export type FiberActivitySource = "latest_activities" | "posts" | "none";
 export type FiberLatestActivityResult = {
   recentActivity: string | null;
   activitySource: FiberActivitySource;
+  /** e.g. "post", "comment", "reaction" — shown in UI instead of generic "Fiber signal". */
+  signalKind: string | null;
   lastActivityAt: string | null;
 };
 
@@ -588,6 +590,7 @@ export async function getLatestActivity(
       return {
         recentActivity: formatted,
         activitySource: "latest_activities",
+        signalKind: activity.activityType ?? "activity",
         lastActivityAt: latest.output?.lastActivityAt ?? activity.occurredAt ?? null,
       };
     }
@@ -610,6 +613,7 @@ export async function getLatestActivity(
       return {
         recentActivity: formatted,
         activitySource: "posts",
+        signalKind: "post",
         lastActivityAt: when,
       };
     }
@@ -618,6 +622,7 @@ export async function getLatestActivity(
   return {
     recentActivity: null,
     activitySource: "none",
+    signalKind: null,
     lastActivityAt: latest.output?.lastActivityAt ?? null,
   };
 }

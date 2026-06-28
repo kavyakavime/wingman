@@ -1,18 +1,31 @@
-/** Preview spreadsheet rows — shown before Fiber returns live leads. */
+import { logoUrlForCompany } from "./companyLogo";
+
+/** Preview spreadsheet rows — shown before Orange Slice returns live leads. */
 export type MockLeadRow = {
   id: string;
   personName: string;
   role: string;
   companyName: string;
+  companyLogoUrl?: string;
   locality: string;
   recentActivity: string;
   painSignal: string;
+  fiberSignal: string;
+  fiberSignalKind: string;
+  fiberSignalSource: "latest_activities" | "posts";
 };
+
+function withCompanyLogo<T extends MockLeadRow>(row: T): T {
+  return {
+    ...row,
+    companyLogoUrl: row.companyLogoUrl ?? logoUrlForCompany(row.companyName) ?? undefined,
+  };
+}
 
 export const DEFAULT_ICP =
   "VPs of Sales and CFOs at unicorn SaaS startups in the United States";
 
-export const MOCK_LEADS: MockLeadRow[] = [
+export const MOCK_LEADS = ([
   {
     id: "mock-1",
     personName: "Claire Hughes Johnson",
@@ -21,6 +34,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Spoke at SaaStr on enterprise billing expansion",
     painSignal: "Multi-product GTM alignment",
+    fiberSignal: "[post] (2025-11): Shared thoughts on platform GTM at scale",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-2",
@@ -30,6 +46,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "South San Francisco, CA",
     recentActivity: "Posted on efficient growth at scale",
     painSignal: "CAC payback visibility",
+    fiberSignal: "[activity]: Commented on efficient growth metrics",
+    fiberSignalKind: "activity",
+    fiberSignalSource: "latest_activities",
   },
   {
     id: "mock-3",
@@ -39,6 +58,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Config keynote on design-dev handoff",
     painSignal: "Enterprise seat expansion",
+    fiberSignal: "[post] (2026-01): Shared Figma's design system roadmap for enterprise teams",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-4",
@@ -48,6 +70,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "AI workspace launch blog post",
     painSignal: "Team-wide adoption friction",
+    fiberSignal: "[activity]: Reacted to a thread on AI-native knowledge work",
+    fiberSignalKind: "reaction",
+    fiberSignalSource: "latest_activities",
   },
   {
     id: "mock-5",
@@ -57,6 +82,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "Sydney, Australia",
     recentActivity: "Enterprise brand governance rollout",
     painSignal: "Procurement cycle length",
+    fiberSignal: "[post] (2025-12): Posted on visual brand consistency at enterprise scale",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-6",
@@ -66,6 +94,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Retail media network expansion news",
     painSignal: "Retailer partner churn",
+    fiberSignal: "[activity]: Commented on retail media attribution models",
+    fiberSignalKind: "comment",
+    fiberSignalSource: "latest_activities",
   },
   {
     id: "mock-7",
@@ -75,6 +106,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Data + AI summit investor day",
     painSignal: "Consumption revenue forecasting",
+    fiberSignal: "[post] (2026-02): Shared notes from Databricks investor day on consumption trends",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-8",
@@ -84,6 +118,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Lakehouse platform roadmap thread",
     painSignal: "Enterprise platform consolidation",
+    fiberSignal: "[activity]: Liked a post on unified data + AI platforms",
+    fiberSignalKind: "reaction",
+    fiberSignalSource: "latest_activities",
   },
   {
     id: "mock-9",
@@ -93,6 +130,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "Bozeman, MT",
     recentActivity: "Commentary on AI data cloud demand",
     painSignal: "Workload monetization",
+    fiberSignal: "[post] (2025-10): Wrote about discipline in scaling enterprise data clouds",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-10",
@@ -102,6 +142,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Mateo, CA",
     recentActivity: "Q&A on net revenue retention trends",
     painSignal: "Expansion rep productivity",
+    fiberSignal: "[activity]: Commented on NRR benchmarks for cloud infrastructure",
+    fiberSignalKind: "comment",
+    fiberSignalSource: "latest_activities",
   },
   {
     id: "mock-11",
@@ -111,6 +154,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Jose, CA",
     recentActivity: "Contact center AI feature launch",
     painSignal: "Competitive displacement deals",
+    fiberSignal: "[post] (2026-03): Announced Zoom contact center AI capabilities on LinkedIn",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-12",
@@ -120,6 +166,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Jose, CA",
     recentActivity: "Investor update on enterprise mix shift",
     painSignal: "Pipeline conversion at scale",
+    fiberSignal: "[activity]: Shared a repost on enterprise SaaS pipeline efficiency",
+    fiberSignalKind: "repost",
+    fiberSignalSource: "latest_activities",
   },
   {
     id: "mock-13",
@@ -129,6 +178,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Identity security summit keynote",
     painSignal: "Land-and-expand motion",
+    fiberSignal: "[post] (2025-11): Key takeaways from identity security summit",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-14",
@@ -138,6 +190,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Posted on efficient GTM investment",
     painSignal: "Sales cycle slippage",
+    fiberSignal: "[activity]: Commented on GTM efficiency metrics for security vendors",
+    fiberSignalKind: "comment",
+    fiberSignalSource: "latest_activities",
   },
   {
     id: "mock-15",
@@ -147,6 +202,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "Vancouver, WA",
     recentActivity: "GTM data platform release notes",
     painSignal: "Data quality in outbound",
+    fiberSignal: "[post] (2026-01): Launched GTM data platform updates for revenue teams",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-16",
@@ -156,6 +214,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "Vancouver, WA",
     recentActivity: "Earnings call on platform upsell",
     painSignal: "Multi-threading enterprise deals",
+    fiberSignal: "[activity]: Reacted to earnings highlights on platform upsell motion",
+    fiberSignalKind: "reaction",
+    fiberSignalSource: "latest_activities",
   },
   {
     id: "mock-17",
@@ -165,6 +226,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Essay on progress in fintech infra",
     painSignal: "Global payments complexity",
+    fiberSignal: "[post] (2025-09): Shared essay on accelerating progress in payments infrastructure",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-18",
@@ -174,6 +238,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "Palo Alto, CA",
     recentActivity: "Enterprise AI search case study",
     painSignal: "Security review bottlenecks",
+    fiberSignal: "[activity]: Commented on enterprise AI search adoption blockers",
+    fiberSignalKind: "comment",
+    fiberSignalSource: "latest_activities",
   },
   {
     id: "mock-19",
@@ -183,6 +250,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "New York, NY",
     recentActivity: "Spend management benchmark report",
     painSignal: "Finance-led expansion",
+    fiberSignal: "[post] (2026-02): Published spend management benchmark for mid-market finance",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-20",
@@ -192,6 +262,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "New York, NY",
     recentActivity: "LinkedIn post on corporate card adoption",
     painSignal: "Mid-market outbound efficiency",
+    fiberSignal: "[post] (2025-12): Posted on corporate card adoption trends in mid-market",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-21",
@@ -201,6 +274,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Global payroll compliance webinar",
     painSignal: "International deal velocity",
+    fiberSignal: "[activity]: Shared recap from global payroll compliance webinar",
+    fiberSignalKind: "repost",
+    fiberSignalSource: "latest_activities",
   },
   {
     id: "mock-22",
@@ -210,6 +286,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Remote work compliance expansion",
     painSignal: "Enterprise HRIS integrations",
+    fiberSignal: "[post] (2026-01): Announced remote work compliance expansion across new markets",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-23",
@@ -219,6 +298,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Startup banking GTM playbook share",
     painSignal: "Founder-led sales handoff",
+    fiberSignal: "[activity]: Commented on founder-to-CRO sales handoff playbooks",
+    fiberSignalKind: "comment",
+    fiberSignalSource: "latest_activities",
   },
   {
     id: "mock-24",
@@ -228,6 +310,9 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Corporate card + treasury launch",
     painSignal: "Startup to enterprise transition",
+    fiberSignal: "[post] (2025-11): Launched corporate card and treasury bundle for growth companies",
+    fiberSignalKind: "post",
+    fiberSignalSource: "posts",
   },
   {
     id: "mock-25",
@@ -237,5 +322,8 @@ export const MOCK_LEADS: MockLeadRow[] = [
     locality: "San Francisco, CA",
     recentActivity: "Unified workforce platform roadmap",
     painSignal: "Cross-sell attach rate",
+    fiberSignal: "[activity]: Reacted to unified workforce platform roadmap discussion",
+    fiberSignalKind: "reaction",
+    fiberSignalSource: "latest_activities",
   },
-];
+] as MockLeadRow[]).map(withCompanyLogo);

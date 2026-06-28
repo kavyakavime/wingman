@@ -1,6 +1,6 @@
 "use node";
 
-/** Hour 8 — segment rewrites via Cursor Cloud REST + OpenAI fallback. */
+/** Hour 8 — segment rewrites via Cursor SDK (default) + OpenAI fallback. */
 import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -59,9 +59,15 @@ export const generateSegmentRewrites = action({
     const cursorApiKey = process.env.CURSOR_API_KEY;
     const openaiApiKey = process.env.OPENAI_API_KEY;
 
-    if (!cursorApiKey && !openaiApiKey) {
+    if (!cursorApiKey) {
       throw new Error(
-        "Set OPENAI_API_KEY (recommended) or CURSOR_API_KEY in Convex env before generating rewrites.",
+        "CURSOR_API_KEY is not set in Convex env. Run: npx convex env set CURSOR_API_KEY your_key — rewrites use Cursor SDK by default; OPENAI_API_KEY is fallback only.",
+      );
+    }
+
+    if (!openaiApiKey) {
+      console.warn(
+        "[generateSegmentRewrites] OPENAI_API_KEY not set — Cursor SDK rewrites will not fall back to OpenAI on failure.",
       );
     }
 
@@ -104,9 +110,9 @@ export const generateSegmentRewrites = action({
 });
 
 const EARLY_STAGE_DEPTH_INSTRUCTIONS = [
-  "Give the segment's top cited pain a full two-sentence treatment BEFORE introducing the product.",
-  "Use a 'not because X fails, but because Y' framing in the opening if it fits naturally.",
-  "Do NOT collapse the pain into one flat sentence and jump to the ask.",
+  "Open with a concrete outcome or insight relevant to founders shipping hardware — not a recap of their pain.",
+  "Weave prototype-to-production and validation themes into the product paragraph subtly.",
+  "Do NOT use 'I get why', 'not because X fails', or front-loaded pain inventories.",
 ].join("\n");
 
 export const regenerateSegmentRewrite = action({
@@ -130,9 +136,9 @@ export const regenerateSegmentRewrite = action({
 
     const cursorApiKey = process.env.CURSOR_API_KEY;
     const openaiApiKey = process.env.OPENAI_API_KEY;
-    if (!cursorApiKey && !openaiApiKey) {
+    if (!cursorApiKey) {
       throw new Error(
-        "Set CURSOR_API_KEY and/or OPENAI_API_KEY in Convex env before regenerating.",
+        "CURSOR_API_KEY is not set in Convex env. Regeneration uses Cursor SDK by default.",
       );
     }
 
@@ -179,9 +185,9 @@ export const regenerateEarlyStageRewrite = action({
 
     const cursorApiKey = process.env.CURSOR_API_KEY;
     const openaiApiKey = process.env.OPENAI_API_KEY;
-    if (!cursorApiKey && !openaiApiKey) {
+    if (!cursorApiKey) {
       throw new Error(
-        "Set CURSOR_API_KEY and/or OPENAI_API_KEY in Convex env before regenerating.",
+        "CURSOR_API_KEY is not set in Convex env. Regeneration uses Cursor SDK by default.",
       );
     }
 

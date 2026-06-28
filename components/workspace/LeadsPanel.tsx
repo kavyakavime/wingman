@@ -24,6 +24,7 @@ type LeadsPanelProps = {
   hasSearched: boolean;
   isSearching: boolean;
   runStatus: "loading" | "complete" | "empty" | "error" | null;
+  searchError?: string | null;
   leads: LeadRow[] | undefined;
   selectedIds: Set<Id<"leads">>;
   onToggleLead: (id: Id<"leads">) => void;

@@ -67,6 +67,7 @@ type ChatWorkflowProps = {
   isEnriching: boolean;
   onEnrichSelected: () => Promise<void>;
   leadCount: number;
+  orangeSliceSpreadsheetId?: string | null;
   onGoToSwarm: () => void;
   onGoToRewrites: () => void;
   onSwarmActiveChange: (active: boolean) => void;
@@ -296,6 +297,7 @@ export function ChatWorkflow({
   isEnriching,
   onEnrichSelected,
   leadCount,
+  orangeSliceSpreadsheetId,
   onGoToSwarm,
   onGoToRewrites,
   onSwarmActiveChange,
@@ -368,7 +370,7 @@ export function ChatWorkflow({
     retestResultsSentRef.current = session.chat.retestResultsSent;
   }, [sessionReady, runKey]);
 
-  const canEnrich = hasLiveLeads && runStatus === "complete";
+  const canEnrich = hasLiveLeads;
   const selectedLeadsEnriched =
     selectedLeads.length > 0 &&
     selectedLeads.every(
@@ -498,9 +500,11 @@ export function ChatWorkflow({
       id: uid(),
       role: "assistant",
       kind: "text",
-      content: `${leadCount} leads loaded from Fiber. Select leads in the spreadsheet, then use Enrichment to pull live signals.`,
+      content: orangeSliceSpreadsheetId
+        ? `${leadCount} leads loaded from Orange Slice. [Open spreadsheet in Orange Slice](https://www.orangeslice.ai/dashboard?spreadsheet=${orangeSliceSpreadsheetId}) — enrich here with Fiber live signals + Orange Slice pain signals.`
+        : `${leadCount} leads loaded via Orange Slice. Enrich with Fiber + Orange Slice for live activity and pain signals.`,
     });
-  }, [hasLiveLeads, leadsLoadedSent, leadCount, appendMessage]);
+  }, [hasLiveLeads, leadsLoadedSent, leadCount, orangeSliceSpreadsheetId, appendMessage]);
 
   useEffect(() => {
     if (!selectedLeadsEnriched || enrichCompleteSent || selectedLeads.length === 0) return;
@@ -596,8 +600,8 @@ export function ChatWorkflow({
         role: "assistant",
         kind: "text",
         content: attachment
-          ? "Reading attachment and pulling live decision-makers from Fiber…"
-          : "Pulling live decision-makers from Fiber…",
+          ? "Reading attachment and pulling live decision-makers…"
+          : "Pulling live decision-makers…",
       });
 
       await onFindAudience(trimmed, attachment);
@@ -941,7 +945,7 @@ export function ChatWorkflow({
         {chatMode === "enrichment" ? (
           <div className="mt-3 rounded-xl border border-stone-800 bg-cream/60 px-4 py-4 text-sm leading-relaxed text-stone-400">
             {!canEnrich ? (
-              <p>Run ICP and lead generation first to load leads from Fiber.</p>
+              <p>Run ICP and lead generation first to load leads.</p>
             ) : selectedLeadIds.length === 0 ? (
               <p>
                 Check one or more rows in the spreadsheet, then hit{" "}

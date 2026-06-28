@@ -5,8 +5,9 @@
  * @see node_modules/orangeslice/docs/services/ai/generateObject.ts
  */
 
-import { integrations, services, withApiKey } from "orangeslice";
+import { integrations, services, webBatchSearch, withApiKey } from "orangeslice";
 import { post } from "orangeslice/dist/api";
+import { resolveCompanyLogoUrl, logoUrlForCompany } from "./companyLogo";
 import { plainTextToHtml } from "./parseRewriteDraft";
 import { GmailDirectError, gmailDirectConfigured, sendViaGmailDirect } from "./gmailDirect";
 
@@ -41,6 +42,20 @@ export type PersonaEnrichment = {
   fundingStage: string | null;
   painSignal: string | null;
   intentScore: number | null;
+  recentActivity: string | null;
+  personName?: string | null;
+  role?: string | null;
+  companyName?: string | null;
+  locality?: string | null;
+  companyLogoUrl?: string | null;
+  companyLinkedinUrl?: string | null;
+};
+
+type B2BCompany = {
+  name?: string | null;
+  logo?: string | null;
+  linkedin_url?: string | null;
+  domain?: string | null;
 };
 
 type B2BPerson = {
@@ -66,6 +81,9 @@ type B2BCompanyExtended = {
   employee_count?: number | null;
   employee_growth_12mo?: number | null;
   crunchbase_funding?: FundingRound[] | null;
+  logo?: string | null;
+  linkedin_url?: string | null;
+  domain?: string | null;
 };
 
 function latestFundingStage(company: B2BCompanyExtended | null): string | null {
@@ -109,6 +127,77 @@ function buildContextBlock(
   ].join("\n");
 }
 
+function personRoleFromProfile(person: B2BPerson | null, lead: PersonaLeadInput): string | undefined {
+  const title = person?.title?.trim();
+  const company = person?.company_name?.trim() ?? lead.companyName?.trim();
+  if (title && company) return `${title} at ${company}`;
+  if (title) return title;
+  return lead.role?.trim() || undefined;
+}
+
+/** Company logo + canonical name from Orange Slice B2B DB. */
+export async function enrichCompanyBranding(
+  apiKey: string,
+  input: { companyName?: string; companyLinkedinUrl?: string; domain?: string },
+): Promise<{ name: string | null; logo: string | null; linkedinUrl: string | null; domain: string | null }> {
+  return withApiKey(apiKey.trim(), async () => {
+    const url = input.companyLinkedinUrl?.trim();
+    const domain = input.domain?.trim();
+    const name = input.companyName?.trim();
+
+    let company: B2BCompany | null = null;
+
+    if (url) {
+      company = (await services.company.linkedin.enrich({ url })) as B2BCompany | null;
+    } else if (domain) {
+      company = (await services.company.linkedin.enrich({ domain })) as B2BCompany | null;
+    } else if (name) {
+      const foundUrl = (await services.company.linkedin.findUrl({
+        companyName: name,
+      })) as string | null;
+      if (foundUrl) {
+        company = (await services.company.linkedin.enrich({ url: foundUrl })) as B2BCompany | null;
+      }
+    }
+
+    return {
+      name: company?.name?.trim() ?? name ?? null,
+      logo: resolveCompanyLogoUrl(company?.logo, company?.domain),
+      linkedinUrl: company?.linkedin_url?.trim() ?? url ?? null,
+      domain: company?.domain?.trim() ?? null,
+    };
+  });
+}
+
+/** Recent public signal via Orange Slice web search. */
+export async function getOrangeSliceRecentActivity(
+  lead: PersonaLeadInput,
+  apiKey: string,
+): Promise<string | null> {
+  const personName = lead.personName?.trim();
+  const companyName = lead.companyName?.trim();
+  if (!personName) return null;
+
+  return withApiKey(apiKey.trim(), async () => {
+    const batch = await webBatchSearch({
+      queries: [
+        { query: `site:linkedin.com/posts "${personName}" ${companyName ?? ""}`.trim() },
+        { query: `site:linkedin.com/in "${personName}" ${companyName ?? ""}`.trim() },
+      ],
+    });
+
+    for (const page of batch) {
+      for (const result of page.results ?? []) {
+        const snippet = result.snippet?.trim();
+        if (snippet && snippet.length >= 30) {
+          return snippet.slice(0, 320);
+        }
+      }
+    }
+    return null;
+  });
+}
+
 /**
  * Enrich a persona with funding stage, pain signal, and intent score.
  * Requires a LinkedIn URL — avoids findUrl/Serper lookups.
@@ -133,10 +222,13 @@ export async function enrichPersona(
   }
 
   return withApiKey(apiKey.trim(), async () => {
-    const person = (await services.person.linkedin.enrich({
-      url: linkedinUrl,
-      extended: true,
-    })) as B2BPerson | null;
+    const [person, recentFromWeb] = await Promise.all([
+      services.person.linkedin.enrich({
+        url: linkedinUrl,
+        extended: true,
+      }) as Promise<B2BPerson | null>,
+      getOrangeSliceRecentActivity(lead, apiKey),
+    ]);
 
     let company: B2BCompanyExtended | null = null;
     if (person?.current_company_linkedin_url) {
@@ -152,7 +244,12 @@ export async function enrichPersona(
     }
 
     const fundingFromCompany = latestFundingStage(company);
-    const context = buildContextBlock(lead, person, company);
+    const recentActivity =
+      recentFromWeb ??
+      person?.headline?.trim() ??
+      person?.summary?.trim()?.slice(0, 240) ??
+      null;
+    const context = buildContextBlock({ ...lead, recentActivity }, person, company);
 
     const { object } = await services.ai.generateObject({
       prompt: `You are enriching a B2B sales persona for outbound testing.
@@ -194,6 +291,20 @@ ${context}`,
       fundingStage: fundingFromCompany ?? parsed.fundingStage?.trim() ?? null,
       painSignal: parsed.painSignal?.trim() ?? null,
       intentScore,
+      recentActivity,
+      personName: person?.name?.trim() ?? lead.personName?.trim() ?? null,
+      role: personRoleFromProfile(person, lead),
+      companyName: person?.company_name?.trim() ?? lead.companyName?.trim() ?? null,
+      locality: person?.location?.trim() ?? lead.locality?.trim() ?? null,
+      companyLogoUrl: logoUrlForCompany(
+        person?.company_name?.trim() ?? lead.companyName?.trim(),
+        company?.logo,
+        company?.domain ?? person?.current_company_domain,
+      ),
+      companyLinkedinUrl:
+        company?.linkedin_url?.trim() ??
+        person?.current_company_linkedin_url?.trim() ??
+        null,
     };
   });
 }

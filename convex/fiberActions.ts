@@ -1,13 +1,20 @@
 "use node";
 
-import { FiberApiError, resolveFiberPageSize, searchAudience } from "../lib/fiber";
+import { filterViableAudienceLeads } from "../lib/audienceLead";
+import {
+  attachCompanyBrandingToLeads,
+  resolveAudiencePageSize,
+  searchAudienceViaOrangeSlice,
+} from "../lib/orangeSliceLeads";
+import { OrangeSliceApiError } from "../lib/orangeslice";
+import { logOrangeSlice, summarizeLead } from "../lib/orangeSliceLog";
 import {
   IcpAttachmentError,
   resolveFiberIcpQuery,
   type IcpAttachmentPayload,
 } from "../lib/icpAttachment";
 import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { action, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 
@@ -67,65 +74,101 @@ export const fetchAudience = action({
       throw new Error("Enter an ICP description before searching.");
     }
 
-    const apiKey = process.env.FIBER_API_KEY;
-
+    const apiKey = process.env.ORANGESLICE_API_KEY;
     if (!apiKey) {
       await ctx.runMutation(internal.leads.finishRun, {
         runId,
         status: "error",
         leadCount: 0,
         errorMessage:
-          "FIBER_API_KEY is not set. Run: npx convex env set FIBER_API_KEY your_key",
+          "ORANGESLICE_API_KEY is not set. Run: npx convex env set ORANGESLICE_API_KEY your_key",
       });
       return { runId };
     }
 
-    try {
-      const pageSize = resolveFiberPageSize(args.icp, icp);
-      const result = await searchAudience(icp, apiKey, { pageSize });
+    const fiberKey = process.env.FIBER_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
 
-      if (result.leads.length === 0) {
+    try {
+      const pageSize = resolveAudiencePageSize(args.icp, icp);
+      logOrangeSlice("fetchAudience start", { runId, icp, pageSize, fiber: Boolean(fiberKey) });
+
+      const leadIds: Id<"leads">[] = [];
+
+      const result = await searchAudienceViaOrangeSlice(icp, apiKey, {
+        pageSize,
+        fiberKey,
+        openaiKey,
+        onLead: async (lead) => {
+          const viable = filterViableAudienceLeads([lead]);
+          if (viable.length === 0) return;
+
+          const leadId = await ctx.runMutation(internal.leads.insertLead, {
+            runId,
+            icp,
+            resultType: "people",
+            personName: lead.personName,
+            companyName: lead.companyName,
+            role: lead.role,
+            socialSignal: lead.socialSignal,
+            linkedinUrl: lead.linkedinUrl,
+            locality: lead.locality,
+            fiberSearchId: lead.fiberSearchId ?? "orange-slice",
+          });
+          leadIds.push(leadId);
+          logOrangeSlice("fetchAudience lead", { runId, lead: summarizeLead(lead) });
+        },
+      });
+
+      const pipeline = filterViableAudienceLeads(result.leads);
+
+      if (pipeline.length === 0 && leadIds.length === 0) {
         await ctx.runMutation(internal.leads.finishRun, {
           runId,
           status: "empty",
-          resultType: result.resultType,
+          resultType: "people",
           fiberSearchId: result.searchId,
           leadCount: 0,
         });
         return { runId };
       }
 
-      for (const lead of result.leads) {
-        await ctx.runMutation(internal.leads.insertLead, {
-          runId,
-          icp,
-          resultType: lead.resultType,
-          personName: lead.personName,
-          companyName: lead.companyName,
-          role: lead.role,
-          socialSignal: lead.socialSignal,
-          linkedinUrl: lead.linkedinUrl,
-          locality: lead.locality,
-          fiberSearchId: lead.fiberSearchId ?? result.searchId,
-        });
-      }
-
       await ctx.runMutation(internal.leads.finishRun, {
         runId,
         status: "complete",
-        resultType: result.resultType,
+        resultType: "people",
         fiberSearchId: result.searchId,
-        leadCount: result.leads.length,
+        orangeSliceSpreadsheetId: result.orangeSliceSpreadsheetId,
+        leadCount: Math.max(pipeline.length, leadIds.length),
       });
+
+      try {
+        const branded = await attachCompanyBrandingToLeads(pipeline, apiKey);
+        for (let i = 0; i < branded.length; i += 1) {
+          const leadId = leadIds[i];
+          if (!leadId) continue;
+          await ctx.runMutation(internal.leads.patchLeadBranding, {
+            leadId,
+            companyName: branded[i].companyName,
+            companyLogoUrl: branded[i].companyLogoUrl,
+            companyLinkedinUrl: branded[i].companyLinkedinUrl,
+          });
+        }
+      } catch (error) {
+        logOrangeSlice("fetchAudience branding skipped", {
+          runId,
+          error: error instanceof Error ? error.message : "branding failed",
+        });
+      }
 
       return { runId };
     } catch (error) {
       const message =
-        error instanceof FiberApiError
+        error instanceof OrangeSliceApiError
           ? error.message
           : error instanceof Error
             ? error.message
-            : "Unknown Fiber error";
+            : "Unknown search error";
 
       await ctx.runMutation(internal.leads.finishRun, {
         runId,

@@ -2,12 +2,12 @@
 
 import {
   FiberApiError,
-  getLatestActivity,
   lookupPersonByNameAndCompany,
 } from "../lib/fiber";
+import { enrichLeadWithFiberAndOrangeSlice } from "../lib/enrichLead";
 import { LOCKED_DEMO_PERSONAS } from "../lib/lockedPersonas";
 import { LOCKED_SEGMENT_ASSIGNMENTS } from "../lib/segments";
-import { OrangeSliceApiError, enrichPersona } from "../lib/orangeslice";
+import { OrangeSliceApiError } from "../lib/orangeslice";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -118,8 +118,7 @@ export const seedLockedDemoPersonas = action({
         await ctx.runMutation(internal.leads.setLeadEnrichmentLoading, { leadId });
 
         try {
-          const activity = await getLatestActivity(linkedinUrl, fiberKey);
-          const enrichment = await enrichPersona(
+          const enrichment = await enrichLeadWithFiberAndOrangeSlice(
             {
               personName: persona.personName,
               companyName: profile.companyName ?? persona.companyName,
@@ -127,18 +126,29 @@ export const seedLockedDemoPersonas = action({
               socialSignal: profile.socialSignal,
               linkedinUrl,
               locality: profile.locality,
-              recentActivity: activity.recentActivity,
             },
             orangeKey,
+            fiberKey,
           );
 
           await ctx.runMutation(internal.leads.applyLeadEnrichment, {
             leadId,
-            recentActivity: activity.recentActivity ?? undefined,
-            activitySource: activity.activitySource,
+            recentActivity: enrichment.recentActivity ?? undefined,
+            activitySource:
+              enrichment.fiberSignalSource && enrichment.fiberSignalSource !== "none"
+                ? enrichment.fiberSignalSource
+                : enrichment.recentActivity
+                  ? "latest_activities"
+                  : "none",
             fundingStage: enrichment.fundingStage ?? undefined,
             painSignal: enrichment.painSignal ?? undefined,
             intentScore: enrichment.intentScore ?? undefined,
+            fiberSignal: enrichment.fiberSignal ?? undefined,
+            fiberSignalKind: enrichment.fiberSignalKind ?? undefined,
+            fiberSignalSource:
+              enrichment.fiberSignalSource && enrichment.fiberSignalSource !== "none"
+                ? enrichment.fiberSignalSource
+                : undefined,
           });
 
           base.enriched = true;

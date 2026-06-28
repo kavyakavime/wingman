@@ -1,8 +1,11 @@
 "use node";
 
 import { v } from "convex/values";
-import { FiberApiError, getLatestActivity } from "../lib/fiber";
-import { OrangeSliceApiError, enrichPersona } from "../lib/orangeslice";
+import { logoUrlForCompany } from "../lib/companyLogo";
+import { enrichLeadWithFiberAndOrangeSlice } from "../lib/enrichLead";
+import { FiberApiError } from "../lib/fiber";
+import { OrangeSliceApiError } from "../lib/orangeslice";
+import { logOrangeSlice } from "../lib/orangeSliceLog";
 import { action, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -10,13 +13,11 @@ import type { Id } from "./_generated/dataModel";
 async function enrichLeadBatch(
   ctx: ActionCtx,
   leadIds: Id<"leads">[],
-  fiberKey: string | undefined,
   orangeKey: string | undefined,
+  fiberKey: string | undefined,
 ): Promise<{ enrichedCount: number; leadIds: Id<"leads">[] }> {
-  if (!fiberKey || !orangeKey) {
-    const message = !fiberKey
-      ? "FIBER_API_KEY is not set in Convex env."
-      : "ORANGESLICE_API_KEY is not set in Convex env.";
+  if (!orangeKey) {
+    const message = "ORANGESLICE_API_KEY is not set in Convex env.";
     for (const leadId of leadIds) {
       await ctx.runMutation(internal.leads.applyLeadEnrichment, {
         leadId,
@@ -41,15 +42,13 @@ async function enrichLeadBatch(
         await ctx.runMutation(internal.leads.applyLeadEnrichment, {
           leadId,
           activitySource: "none",
-          enrichmentError: "No LinkedIn URL on this lead — run Fiber search first.",
+          enrichmentError: "No LinkedIn URL on this lead — run audience search first.",
         });
         continue;
       }
 
       try {
-        const activity = await getLatestActivity(linkedinUrl, fiberKey);
-
-        const enrichment = await enrichPersona(
+        const enrichment = await enrichLeadWithFiberAndOrangeSlice(
           {
             personName: lead.personName,
             companyName: lead.companyName,
@@ -57,24 +56,56 @@ async function enrichLeadBatch(
             socialSignal: lead.socialSignal,
             linkedinUrl,
             locality: lead.locality,
-            recentActivity: activity.recentActivity,
           },
           orangeKey,
+          fiberKey,
         );
+
+        logOrangeSlice("enrichLead (Fiber + Orange Slice)", {
+          leadId,
+          linkedinUrl,
+          fiberSignal: enrichment.fiberSignal,
+          painSignal: enrichment.painSignal,
+          recentActivity: enrichment.recentActivity,
+        });
+
+        const activitySource =
+          enrichment.fiberSignalSource && enrichment.fiberSignalSource !== "none"
+            ? enrichment.fiberSignalSource
+            : enrichment.recentActivity
+              ? "latest_activities"
+              : "none";
 
         await ctx.runMutation(internal.leads.applyLeadEnrichment, {
           leadId,
-          recentActivity: activity.recentActivity ?? undefined,
-          activitySource: activity.activitySource,
-          fundingStage: enrichment.fundingStage ?? undefined,
+          recentActivity: enrichment.recentActivity ?? undefined,
+          activitySource,
           painSignal: enrichment.painSignal ?? undefined,
+          fundingStage: enrichment.fundingStage ?? undefined,
           intentScore: enrichment.intentScore ?? undefined,
+          fiberSignal: enrichment.fiberSignal ?? undefined,
+          fiberSignalKind: enrichment.fiberSignalKind ?? undefined,
+          fiberSignalSource:
+            enrichment.fiberSignalSource && enrichment.fiberSignalSource !== "none"
+              ? enrichment.fiberSignalSource
+              : undefined,
+          personName: enrichment.personName ?? undefined,
+          role: enrichment.role ?? undefined,
+          companyName: enrichment.companyName ?? undefined,
+          locality: enrichment.locality ?? undefined,
+          companyLogoUrl:
+            logoUrlForCompany(
+              enrichment.companyName ?? lead.companyName,
+              enrichment.companyLogoUrl ?? lead.companyLogoUrl,
+            ) ?? undefined,
+          companyLinkedinUrl:
+            enrichment.companyLinkedinUrl ?? lead.companyLinkedinUrl ?? undefined,
         });
 
         enrichedCount += 1;
       } catch (error) {
         const message =
-          error instanceof FiberApiError || error instanceof OrangeSliceApiError
+          error instanceof OrangeSliceApiError || error instanceof FiberApiError
             ? error.message
             : error instanceof Error
               ? error.message
@@ -104,13 +135,13 @@ export const enrichLockedPersonas = action({
     return enrichLeadBatch(
       ctx,
       leadIds,
-      process.env.FIBER_API_KEY,
       process.env.ORANGESLICE_API_KEY,
+      process.env.FIBER_API_KEY,
     );
   },
 });
 
-/** Enrich Fiber audience leads from an audience run (batch). */
+/** Enrich leads with Fiber live LinkedIn activity + Orange Slice pain/funding signals. */
 export const enrichLeads = action({
   args: { leadIds: v.array(v.id("leads")) },
   handler: async (ctx, args): Promise<{ enrichedCount: number; leadIds: Id<"leads">[] }> => {
@@ -120,8 +151,8 @@ export const enrichLeads = action({
     return enrichLeadBatch(
       ctx,
       args.leadIds,
-      process.env.FIBER_API_KEY,
       process.env.ORANGESLICE_API_KEY,
+      process.env.FIBER_API_KEY,
     );
   },
 });

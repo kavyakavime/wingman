@@ -398,11 +398,24 @@ export const applyLeadEnrichment = internalMutation({
     ),
     fundingStage: v.optional(v.string()),
     painSignal: v.optional(v.string()),
+    fiberSignal: v.optional(v.string()),
+    fiberSignalKind: v.optional(v.string()),
+    fiberSignalSource: v.optional(
+      v.union(
+        v.literal("latest_activities"),
+        v.literal("posts"),
+        v.literal("none"),
+      ),
+    ),
     intentScore: v.optional(v.number()),
     enrichmentError: v.optional(v.string()),
-    linkedinUrl: v.optional(v.string()),
-    companyName: v.optional(v.string()),
+    personName: v.optional(v.string()),
     role: v.optional(v.string()),
+    companyName: v.optional(v.string()),
+    locality: v.optional(v.string()),
+    companyLogoUrl: v.optional(v.string()),
+    companyLinkedinUrl: v.optional(v.string()),
+    linkedinUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { leadId, enrichmentError, ...fields } = args;
@@ -451,6 +464,19 @@ export const clearStuckEnrichment = mutation({
   },
 });
 
+export const patchLeadBranding = internalMutation({
+  args: {
+    leadId: v.id("leads"),
+    companyName: v.optional(v.string()),
+    companyLogoUrl: v.optional(v.string()),
+    companyLinkedinUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { leadId, ...fields } = args;
+    await ctx.db.patch(leadId, fields);
+  },
+});
+
 export const insertLead = internalMutation({
   args: {
     runId: v.id("audienceRuns"),
@@ -462,11 +488,13 @@ export const insertLead = internalMutation({
     socialSignal: v.optional(v.string()),
     linkedinUrl: v.optional(v.string()),
     locality: v.optional(v.string()),
+    companyLogoUrl: v.optional(v.string()),
+    companyLinkedinUrl: v.optional(v.string()),
     fiberSearchId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { runId, ...lead } = args;
-    await ctx.db.insert("leads", {
+    const leadId = await ctx.db.insert("leads", {
       runId,
       ...lead,
       createdAt: Date.now(),
@@ -476,6 +504,8 @@ export const insertLead = internalMutation({
     if (run) {
       await ctx.db.patch(runId, { leadCount: run.leadCount + 1 });
     }
+
+    return leadId;
   },
 });
 
@@ -495,6 +525,7 @@ export const finishRun = internalMutation({
     status: v.union(v.literal("complete"), v.literal("empty"), v.literal("error")),
     resultType: v.optional(v.union(v.literal("people"), v.literal("companies"))),
     fiberSearchId: v.optional(v.string()),
+    orangeSliceSpreadsheetId: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
     leadCount: v.number(),
   },
@@ -503,6 +534,7 @@ export const finishRun = internalMutation({
       status: args.status,
       resultType: args.resultType,
       fiberSearchId: args.fiberSearchId,
+      orangeSliceSpreadsheetId: args.orangeSliceSpreadsheetId,
       errorMessage: args.errorMessage,
       leadCount: args.leadCount,
       completedAt: Date.now(),

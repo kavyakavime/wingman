@@ -1,5 +1,5 @@
 /**
- * Convex-safe entry: Cursor Cloud REST + OpenAI fallback.
+ * Convex-safe entry: Cursor Cloud REST (default) + OpenAI fallback.
  * @cursor/sdk cannot bundle inside Convex actions — this uses the same Cloud
  * Agents API that Agent.create({ cloud: {} }) calls under the hood.
  */

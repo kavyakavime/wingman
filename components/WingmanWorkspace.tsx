@@ -5,6 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { DEFAULT_ICP } from "@/lib/mockLeads";
+import {
+  nextCachedLeadList,
+  resolveStableLeadList,
+} from "@/lib/stableLeadList";
 import type { IcpAttachmentPayload } from "@/lib/icpAttachment";
 import type { PersonaSegment } from "@/lib/segments";
 import type { OutreachChannel } from "@/lib/outreachChannel";
@@ -47,6 +51,7 @@ export function WingmanWorkspace() {
   const [rewriteSelectedIds, setRewriteSelectedIds] = useState<Set<Id<"leads">>>(
     () => new Set(),
   );
+  const [cachedLeads, setCachedLeads] = useState<LeadRow[]>([]);
   const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
@@ -77,10 +82,24 @@ export function WingmanWorkspace() {
     activeRunId ? { runId: activeRunId } : "skip",
   );
 
-  const isRunLoading =
-    isSearching || (run !== undefined && run !== null && run.status === "loading");
+  const runStatus = run?.status ?? null;
 
-  const leadList = useMemo(() => leads ?? [], [leads]);
+  useEffect(() => {
+    setCachedLeads((prev) => nextCachedLeadList(leads, runStatus, prev));
+  }, [leads, runStatus]);
+
+  useEffect(() => {
+    if (activeRunId === null) setCachedLeads([]);
+  }, [activeRunId]);
+
+  const leadList = useMemo(
+    () => resolveStableLeadList(leads, cachedLeads, runStatus),
+    [leads, cachedLeads, runStatus],
+  );
+
+  const isRunLoading =
+    leadList.length === 0 &&
+    (isSearching || (run !== undefined && run !== null && run.status === "loading"));
   const hasSearched = activeRunId !== null;
   const hasLiveLeads = leadList.length > 0;
 
@@ -116,7 +135,9 @@ export function WingmanWorkspace() {
   useEffect(() => {
     if (leads === undefined) return;
     if (leads.length === 0) {
-      setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+      if (runStatus === "empty" || runStatus === "error") {
+        setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+      }
       return;
     }
     setSelectedIds((prev) => {
@@ -127,7 +148,7 @@ export function WingmanWorkspace() {
       }
       return next;
     });
-  }, [leads]);
+  }, [leads, runStatus]);
 
   useEffect(() => {
     if (leftTab === "rewrites" && !hasRewrites) {
@@ -424,7 +445,8 @@ export function WingmanWorkspace() {
         hasSearched={hasSearched}
         isSearching={isRunLoading}
         runStatus={run?.status ?? null}
-        leads={leads}
+        searchError={run?.errorMessage ?? searchError}
+        leads={leadList}
         selectedIds={selectedIds}
         onToggleLead={handleToggleLead}
         onToggleAll={handleToggleAll}
@@ -458,6 +480,7 @@ export function WingmanWorkspace() {
         isEnriching={isEnriching}
         onEnrichSelected={handleEnrichSelected}
         leadCount={leadList.length}
+        orangeSliceSpreadsheetId={run?.orangeSliceSpreadsheetId}
         onGoToSwarm={goToSwarm}
         onGoToRewrites={goToRewrites}
         onSwarmActiveChange={setIsSwarmActive}

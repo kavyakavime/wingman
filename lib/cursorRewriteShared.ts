@@ -60,15 +60,16 @@ export function buildRewritePrompt(
 
   const sentimentGoal =
     sentiment === "neutral"
-      ? "They were mildly interested but unconvinced — sharpen proof, relevance, and specificity so a skeptical reader would reply."
+      ? "They were mildly interested but unconvinced — add sharper proof and specificity so a skeptical reader would reply, without sounding like you're 'handling objections'."
       : sentiment === "positive"
-        ? "They mostly liked it — remove remaining vague lines and make the value prop undeniable."
-        : "They objected — rewrite must directly neutralize the cited concerns below, not generic polish.";
+        ? "They mostly liked it — tighten vague lines and make the value prop undeniable; do not add performative empathy."
+        : "They objected — address cited concerns through relevance and proof woven into the body, not by leading with their pain points.";
 
   const lines = [
     "You are an elite cold-outbound copywriter. Rewrite ONE complete email for a specific B2B segment.",
     "",
     `Target segment: ${SEGMENT_LABELS[segment]} — ${SEGMENT_DESCRIPTIONS[segment]}`,
+    `Segment tone: ${SEGMENT_COPY_GUIDANCE[segment]}`,
     "",
     "Swarm simulation reactions from digital twins in this segment:",
     formatObjectionsBlock(objections),
@@ -76,11 +77,23 @@ export function buildRewritePrompt(
     "Rewrite requirements:",
     `- ${sentimentGoal}`,
     "- Write a materially different email — new subject line, new opening hook, restructured body. Do NOT lightly edit the original.",
-    "- Open by acknowledging the core objection or skepticism in natural language (one sentence).",
+    "- Tone: thoughtful peer, not a sales bot doing objection handling.",
+    "- Opening paragraph: lead with a specific, relevant hook (insight, outcome, or context) — NOT a pain inventory and NOT meta-commentary on their skepticism.",
+    "- Middle paragraphs: weave swarm concerns in subtly via proof, examples, and product fit — show you understand their world without naming every problem upfront.",
     "- Replace generic claims with concrete specificity: who it's for, what changes, why now.",
     "- Keep total length within ±25% of the original (similar number of paragraphs).",
     "- Preserve the sender voice and any factual product claims from the original — do not invent customers or metrics.",
     "- End with one clear, low-friction CTA.",
+    "",
+    "Banned openings (never use these patterns):",
+    '- "I get why..." / "I know you\'re juggling..." / "I see why a generic..."',
+    '- "No [vendor/data pitch] solves those head-on" / "feels off-target when you\'re..."',
+    '- Leading sentence that lists 2+ of their pain points before stating value',
+    '- Explicitly naming that they objected, seemed skeptical, or received a generic pitch',
+    "",
+    "Opening examples:",
+    '- Good: "Teams shipping humanoids into pilot often need behaviour data that holds up in sim-to-real before fleet scale — that\'s the gap we built for."',
+    '- Bad: "I get why a generic dataset pitch feels off-target when you\'re juggling prototype timelines and safety validation."',
     "",
     "Output format (strict):",
     'First line MUST be `Subject: Your subject here`',
@@ -145,17 +158,18 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): 
 
 const SEGMENT_COPY_GUIDANCE: Record<PersonaSegment, string> = {
   scaled:
-    "Enterprise tone: lead with measurable ROI, implementation risk reduction, and proof this fits an established operator — not startup hype.",
+    "Enterprise tone: open with operational or deployment context, then proof this fits an established operator — not startup hype or pain callouts.",
   early_stage:
-    "Founder tone: acknowledge scrappiness and time pressure; lead with a concrete workflow win in the first two sentences before the ask.",
+    "Founder tone: open with a concrete outcome or workflow insight; let time pressure and scrappiness show through brevity and specificity, not by listing their stresses.",
   vertical_specialist:
-    "Domain-expert tone: use vertical-specific language; show you understand their niche constraints, not generic SaaS benefits.",
+    "Domain-expert tone: open with niche-specific language that signals fluency; constraints should feel implied, not recited.",
 };
 
 const REWRITE_SYSTEM_PROMPT = [
   "You are an elite B2B cold-outbound copywriter.",
-  "You rewrite emails to neutralize specific objections surfaced by a simulation swarm.",
+  "You rewrite emails so they feel personally relevant to a segment — through proof and specificity, not performative empathy.",
   "Every rewrite must change the subject line, opening hook, and core argument — never synonym swaps or light edits.",
+  "Never open by acknowledging objections, skepticism, or pain lists. Earn attention first; align subtly later.",
   "Preserve factual claims from the original; do not invent customers, metrics, or funding rounds.",
 ].join(" ");
 
@@ -250,7 +264,7 @@ export async function rewriteViaOpenAi(
     prompt,
     segment ? `\nSegment copy guidance: ${SEGMENT_COPY_GUIDANCE[segment]}` : "",
     objections.length > 0
-      ? `\nYou MUST explicitly neutralize these objections in the body (not a single vague line):\n${objections
+      ? `\nAddress these swarm concerns subtly in the body (woven into proof, not announced in the opening):\n${objections
           .slice(0, 4)
           .map(
             (o, i) =>
@@ -277,7 +291,8 @@ export async function rewriteViaOpenAi(
           body: { type: "string" },
           openingHook: {
             type: "string",
-            description: "One sentence summarizing how the opening addresses the top objection",
+            description:
+              "The opening hook: one sentence that earns attention without naming pain or skepticism",
           },
         },
         required: ["subject", "body", "openingHook"],
@@ -332,13 +347,13 @@ Your prior draft was too similar to the original. Write a NEW email with a diffe
         {
           role: "system",
           content:
-            "You polish cold emails. Keep subject and length similar. Improve clarity and objection handling only — do not add invented facts.",
+            "You polish cold emails. Keep subject and length similar. Improve flow and subtle relevance — weave objection themes into proof, never into a front-loaded pain paragraph. No 'I get why' openings.",
         },
         {
           role: "user",
-          content: `Polish this rewrite so each objection below is clearly addressed in natural prose (not bullet points).
+          content: `Polish this rewrite. Swarm themes should feel natural in the body, not announced in sentence one.
 
-Objections:
+Themes to weave subtly (do not list these in the opening):
 ${objections
   .slice(0, 4)
   .map((o) => `- ${o.personName}: ${o.reasoningText || o.citedSignal}`)
@@ -417,36 +432,39 @@ export async function rewriteForSegmentWithCursorFn(
     dominantSentiment: options?.dominantSentiment,
   };
 
-  if (cursorApiKey) {
-    try {
-      console.log(`[rewriteForSegment] segment=${segment} path=cursor_sdk attempting…`);
-      const raw = await withTimeout(
-        cursorRewriteFn(prompt, cursorApiKey),
-        CURSOR_REWRITE_TIMEOUT_MS,
-        "Cursor rewrite",
-      );
-      const rewrittenDraft = await rewriteWithRetry(
-        () => Promise.resolve(validateRewriteDraft(raw)),
-        segment,
-      );
-      console.log(
-        `[rewriteForSegment] segment=${segment} path=cursor_sdk success (${rewrittenDraft.length} chars)`,
-      );
-      return { rewrittenDraft, generatedVia: "cursor_sdk" };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(
-        `[rewriteForSegment] segment=${segment} path=cursor_sdk failed: ${message}`,
-      );
-      if (!openaiApiKey) {
-        throw new Error(
-          `Rewrite failed for ${SEGMENT_LABELS[segment]}: ${message}`,
-        );
-      }
-    }
+  if (!cursorApiKey) {
+    throw new Error(
+      "CURSOR_API_KEY is not configured. Rewrites use Cursor SDK by default; set it with: npx convex env set CURSOR_API_KEY your_key",
+    );
   }
 
-  if (openaiApiKey) {
+  try {
+    console.log(`[rewriteForSegment] segment=${segment} path=cursor_sdk attempting…`);
+    const raw = await withTimeout(
+      cursorRewriteFn(prompt, cursorApiKey),
+      CURSOR_REWRITE_TIMEOUT_MS,
+      "Cursor rewrite",
+    );
+    const rewrittenDraft = await rewriteWithRetry(
+      () => Promise.resolve(validateRewriteDraft(raw)),
+      segment,
+    );
+    console.log(
+      `[rewriteForSegment] segment=${segment} path=cursor_sdk success (${rewrittenDraft.length} chars)`,
+    );
+    return { rewrittenDraft, generatedVia: "cursor_sdk" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[rewriteForSegment] segment=${segment} path=cursor_sdk failed: ${message}`,
+    );
+
+    if (!openaiApiKey) {
+      throw new Error(
+        `Cursor rewrite failed for ${SEGMENT_LABELS[segment]} and OPENAI_API_KEY is not set for fallback: ${message}`,
+      );
+    }
+
     try {
       console.log(`[rewriteForSegment] segment=${segment} path=openai_fallback attempting…`);
       const rewrittenDraft = await rewriteWithRetry(
@@ -462,15 +480,12 @@ export async function rewriteForSegmentWithCursorFn(
         `[rewriteForSegment] segment=${segment} path=openai_fallback success (${rewrittenDraft.length} chars)`,
       );
       return { rewrittenDraft, generatedVia: "openai_fallback" };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+    } catch (fallbackError) {
+      const fallbackMessage =
+        fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
       throw new Error(
-        `Rewrite failed for ${SEGMENT_LABELS[segment]}: ${message}`,
+        `Rewrite failed for ${SEGMENT_LABELS[segment]} (Cursor: ${message}; OpenAI fallback: ${fallbackMessage})`,
       );
     }
   }
-
-  throw new Error(
-    "Set CURSOR_API_KEY and/or OPENAI_API_KEY in Convex env before generating rewrites.",
-  );
 }
