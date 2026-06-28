@@ -6,6 +6,7 @@ import {
   SEGMENT_STYLES,
   type PersonaSegment,
 } from "../lib/segments";
+import { normalizeLinkedInUrl } from "../lib/linkedinUrl";
 
 function activityLabel(source: Doc<"leads">["activitySource"]): string {
   if (source === "latest_activities") return "Recent activity";
@@ -128,7 +129,7 @@ export function PersonaCard({ lead }: { lead: Doc<"leads"> }) {
 
         {lead.linkedinUrl && (
           <a
-            href={lead.linkedinUrl}
+            href={normalizeLinkedInUrl(lead.linkedinUrl)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-block text-xs font-medium text-brand-blue-light hover:underline"

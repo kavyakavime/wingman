@@ -139,6 +139,7 @@ export function LeadsPanel({
             personas={selectedLeadIds.length > 0 ? graphPersonas : []}
             reactions={swarmReactions}
             isSwarmRunning={isSwarmActive}
+            draftMessage={simulationDraft}
             ambientLeads={unselectedLeads}
             fillContainer
             emptyMessage={

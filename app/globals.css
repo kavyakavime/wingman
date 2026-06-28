@@ -81,19 +81,25 @@ input[type="checkbox"] {
   animation: swarm-label-pulse 1.6s ease-in-out infinite;
 }
 
+.swarm-node-label--email {
+  color: #f5f0e8;
+  font-weight: 600;
+  text-shadow: 0 0 12px rgba(245, 240, 232, 0.35), 0 0 8px rgba(0, 0, 0, 0.9);
+}
+
 .swarm-node-label--positive {
-  color: #d4c878;
-  text-shadow: 0 0 8px rgba(0, 0, 0, 0.9);
+  color: #34d399;
+  text-shadow: 0 0 10px rgba(52, 211, 153, 0.45), 0 0 8px rgba(0, 0, 0, 0.9);
 }
 
 .swarm-node-label--neutral {
-  color: #8ec8a0;
-  text-shadow: 0 0 8px rgba(0, 0, 0, 0.9);
+  color: #facc15;
+  text-shadow: 0 0 10px rgba(250, 204, 21, 0.35), 0 0 8px rgba(0, 0, 0, 0.9);
 }
 
 .swarm-node-label--objecting {
-  color: #c89088;
-  text-shadow: 0 0 8px rgba(0, 0, 0, 0.9);
+  color: #f87171;
+  text-shadow: 0 0 10px rgba(248, 113, 113, 0.4), 0 0 8px rgba(0, 0, 0, 0.9);
 }
 
 .swarm-node-label--ambient {

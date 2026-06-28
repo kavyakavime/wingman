@@ -72,6 +72,31 @@ export function formatEmailEditorValue(subject: string, body: string): string {
   return `Subject: ${subject}\n\n${body}`;
 }
 
+function slugifyEmailPart(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 48);
+}
+
+/** Best-effort To address when enrichment has no email — firstname@company.com */
+export function guessLeadEmail(
+  personName?: string | null,
+  companyName?: string | null,
+): string {
+  const firstRaw = personName?.trim().split(/\s+/)[0] ?? "contact";
+  const first = slugifyEmailPart(firstRaw) || "contact";
+
+  const companyRaw = (companyName ?? "")
+    .replace(/\b(incorporated|inc|llc|ltd|corp|corporation|co)\.?$/gi, "")
+    .trim();
+  const company = slugifyEmailPart(companyRaw) || "company";
+
+  return `${first}@${company}.com`;
+}
+
 export function parseEmailEditorValue(text: string): { subject: string; body: string } {
   const parsed = tryParseDraft(text.trim());
   if (parsed) return parsed;

@@ -18,11 +18,20 @@ const SENTIMENT_NEGATIVITY: Record<SwarmSentiment, number> = {
   positive: 2,
 };
 
+export type SegmentObjection = {
+  personName: string;
+  sentiment: SwarmSentiment;
+  citedSignal: string;
+  reasoningText: string;
+};
+
 export type SegmentScore = {
   segment: PersonaSegment;
   predictedReplyRate: number | null;
   /** citedSignal(s) from the most negative sentiment tier in this segment. */
   topSignals: string[];
+  /** Full persona reactions for rewrite prompts. */
+  objections: SegmentObjection[];
   /** Sentiment tier those topSignals came from. */
   dominantSentiment: SwarmSentiment | null;
   personaCount: number;
@@ -50,6 +59,7 @@ export function computeSegmentScores(reactions: SwarmReactionRow[]): SegmentScor
         segment,
         predictedReplyRate: null,
         topSignals: [],
+        objections: [],
         dominantSentiment: null,
         personaCount: 0,
       };
@@ -71,6 +81,20 @@ export function computeSegmentScores(reactions: SwarmReactionRow[]): SegmentScor
     const topSignals = priorityReactions
       .map((r) => r.citedSignal.trim())
       .filter(Boolean);
+
+    const objections = [...inSegment]
+      .sort(
+        (a, b) => SENTIMENT_NEGATIVITY[a.sentiment] - SENTIMENT_NEGATIVITY[b.sentiment],
+      )
+      .slice(0, 6)
+      .map((r) => ({
+        personName: r.personName?.trim() || "Persona",
+        sentiment: r.sentiment,
+        citedSignal: r.citedSignal.trim(),
+        reasoningText: r.reasoningText.trim(),
+      }))
+      .filter((o) => o.citedSignal || o.reasoningText);
+
     const dominantSentiment =
       priorityReactions[0]?.sentiment ??
       (minNegativity === 0 ? "objecting" : minNegativity === 1 ? "neutral" : "positive");
@@ -79,6 +103,7 @@ export function computeSegmentScores(reactions: SwarmReactionRow[]): SegmentScor
       segment,
       predictedReplyRate,
       topSignals,
+      objections,
       dominantSentiment,
       personaCount: inSegment.length,
     };

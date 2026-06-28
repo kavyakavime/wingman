@@ -45,27 +45,38 @@ export const generateSegmentRewrites = action({
     }
     const displayReactions = pickDisplayReactions(allReactions, 2);
     const segmentScores = computeSegmentScores(displayReactions);
+    const segmentsToRewrite = SEGMENT_ORDER.filter((segment) => {
+      const score = segmentScores.find((entry) => entry.segment === segment);
+      return (score?.personaCount ?? 0) > 0;
+    });
+
+    if (segmentsToRewrite.length === 0) {
+      throw new Error(
+        "No swarm reactions found for the selected leads. Run the simulation first, then click Fix it.",
+      );
+    }
 
     const cursorApiKey = process.env.CURSOR_API_KEY;
     const openaiApiKey = process.env.OPENAI_API_KEY;
 
     if (!cursorApiKey && !openaiApiKey) {
       throw new Error(
-        "Set CURSOR_API_KEY and/or OPENAI_API_KEY in Convex env before generating rewrites.",
+        "Set OPENAI_API_KEY (recommended) or CURSOR_API_KEY in Convex env before generating rewrites.",
       );
     }
 
     const rewriteResults = await Promise.all(
-      SEGMENT_ORDER.map(async (segment) => {
-        const score = segmentScores.find((s) => s.segment === segment);
+      segmentsToRewrite.map(async (segment) => {
+        const score = segmentScores.find((entry) => entry.segment === segment);
         const topSignals = score?.topSignals ?? [];
+        const objections = score?.objections ?? [];
         const dominantSentiment = score?.dominantSentiment ?? null;
 
         const result = await rewriteForSegment(
           segment,
           topSignals,
           originalDraft,
-          { cursorApiKey, openaiApiKey, dominantSentiment },
+          { cursorApiKey, openaiApiKey, dominantSentiment, objections },
         );
 
         return {
@@ -93,12 +104,9 @@ export const generateSegmentRewrites = action({
 });
 
 const EARLY_STAGE_DEPTH_INSTRUCTIONS = [
-  "STRUCTURE AND DEPTH (required for this early_stage rewrite):",
-  "- This is a SHORT segment-specific variant (~400–550 characters total, similar to the scaled and vertical_specialist rewrites — NOT a full-length email). Keep subject + 2–3 short paragraphs + brief CTA.",
-  "- Open with a real insight about WHY zero-trust hardware security matters for early-stage robotics/security founders — use a 'not because X fails, but because Y' framing (like vertical_specialist opens with 'not because the technology fails, but because...').",
-  "- Give Ian's stated concern — protecting IP and safety-critical functions via zero-trust hardware at the device layer — a full two-sentence treatment BEFORE introducing Wingman.",
-  "- Do NOT collapse the pain into one flat sentence and jump to the ask.",
-  "- Then pivot naturally to a brief Wingman offer/CTA. Do NOT copy the entire original draft verbatim.",
+  "Give the segment's top cited pain a full two-sentence treatment BEFORE introducing the product.",
+  "Use a 'not because X fails, but because Y' framing in the opening if it fits naturally.",
+  "Do NOT collapse the pain into one flat sentence and jump to the ask.",
 ].join("\n");
 
 export const regenerateSegmentRewrite = action({
@@ -242,12 +250,6 @@ export const retestRewrittenVariants = action({
       rewriteBySegment.set(row.segment as PersonaSegment, row.rewrittenDraft);
     }
 
-    for (const segment of SEGMENT_ORDER) {
-      if (!rewriteBySegment.has(segment)) {
-        throw new Error(`Missing rewrite for segment: ${segment}`);
-      }
-    }
-
     let leads: Doc<"leads">[];
     if (args.leadIds && args.leadIds.length > 0) {
       leads = await ctx.runQuery(internal.leads.getLeadsByIdsInternal, {
@@ -261,6 +263,20 @@ export const retestRewrittenVariants = action({
       if (leads.length === 0) {
         throw new Error(
           "No locked demo personas found. Run seedDemo:seedLockedDemoPersonas first.",
+        );
+      }
+    }
+
+    const segmentsNeeded = new Set<PersonaSegment>();
+    for (const lead of leads) {
+      const segment = toReactionLead(lead).segment;
+      if (segment) segmentsNeeded.add(segment);
+    }
+
+    for (const segment of segmentsNeeded) {
+      if (!rewriteBySegment.has(segment)) {
+        throw new Error(
+          `Missing rewrite for segment: ${segment}. Run Fix it after the baseline swarm completes.`,
         );
       }
     }
@@ -305,6 +321,7 @@ export const retestRewrittenVariants = action({
               personName: row.persona.personName,
               sentiment: row.reaction.sentiment,
               citedSignal: row.reaction.citedSignal,
+              reasoningText: row.reaction.reasoningText,
             }));
 
           const reaction = await runPeerInfluenceReaction(

@@ -17,6 +17,8 @@ export class FiberApiError extends Error {
   }
 }
 
+import { normalizeLinkedInUrl } from "./linkedinUrl";
+
 /** Normalized lead row derived from Fiber NLP search results. */
 export type FiberAudienceLead = {
   resultType: "people" | "companies";
@@ -177,6 +179,12 @@ function personCompanyAndRoleForLookup(
   };
 }
 
+function fiberLinkedInUrl(url: string | null | undefined): string | undefined {
+  const trimmed = url?.trim();
+  if (!trimmed) return undefined;
+  return normalizeLinkedInUrl(trimmed);
+}
+
 function mapPersonForCompanyLookup(
   person: FiberPerson,
   lookupCompanyName: string,
@@ -189,7 +197,7 @@ function mapPersonForCompanyLookup(
     companyName,
     role,
     socialSignal: personSocialSignal(person),
-    linkedinUrl: person.url?.trim() || undefined,
+    linkedinUrl: fiberLinkedInUrl(person.url),
     locality: person.locality?.trim() || undefined,
     fiberSearchId: searchId,
   };
@@ -249,7 +257,7 @@ function mapPeople(searchId: string, people: FiberPerson[]): FiberAudienceLead[]
     companyName: personCompanyName(person),
     role: personRole(person),
     socialSignal: personSocialSignal(person),
-    linkedinUrl: person.url?.trim() || undefined,
+    linkedinUrl: fiberLinkedInUrl(person.url),
     locality: person.locality?.trim() || undefined,
     fiberSearchId: searchId,
   }));

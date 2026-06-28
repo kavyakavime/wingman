@@ -237,7 +237,7 @@ function SwarmResultsCard({
           onClick={onFixIt}
           disabled={isGenerating || isSwarmRunning || fixItUsed}
         >
-          {isGenerating ? "Fixing with Cursor SDK…" : "Fix it"}
+          {isGenerating ? "Rewriting emails…" : "Fix it"}
         </Button>
       ) : null}
       {variant === "after_rewrite" && onSend ? (
@@ -267,7 +267,7 @@ function RewriteReadyCard({
           <p className="text-sm font-semibold text-stone-100">Rewrites ready</p>
           <p className="mt-1 text-xs leading-relaxed text-stone-500">
             {rewriteCount > 0
-              ? `${rewriteCount} segment variant${rewriteCount === 1 ? "" : "s"} generated with Cursor SDK (or OpenAI fallback). Each addresses its top objection with cited signals.`
+              ? `${rewriteCount} segment variant${rewriteCount === 1 ? "" : "s"} rewritten from swarm objections. Open the Rewritten emails tab to review, then re-swarm.`
               : "Segment variants are ready. Re-swarm to test them on your selected digital twins."}
           </p>
         </div>
@@ -703,18 +703,25 @@ export function ChatWorkflow({
   }
 
   async function handleFixIt() {
-    if (!activeDraft.trim()) return;
+    const draft = activeDraft.trim() || draftMessage.trim();
+    if (!draft) {
+      setClientError("No simulation draft found. Paste your email and run the swarm first.");
+      return;
+    }
+    if (!activeDraft.trim()) {
+      setActiveDraft(draft);
+    }
     setClientError(null);
     setIsGenerating(true);
     appendMessage({
       id: uid(),
       role: "user",
       kind: "text",
-      content: "Fix it — rewrite per segment with Cursor SDK",
+      content: "Fix it — rewrite per segment using swarm objections",
     });
     try {
       await generateRewrites({
-        originalDraft: activeDraft.trim(),
+        originalDraft: draft,
         leadIds: selectedLeadIds,
       });
       appendMessage({

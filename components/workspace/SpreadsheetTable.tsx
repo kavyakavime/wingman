@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { MOCK_LEADS, type MockLeadRow } from "@/lib/mockLeads";
+import { normalizeLinkedInUrl } from "@/lib/linkedinUrl";
 import type { LeadRow } from "./LeadSpreadsheet";
 
 const gridLine = "border-stone-400/25";
@@ -280,7 +281,7 @@ export function SpreadsheetTable({
                         </span>
                         {lead.linkedinUrl ? (
                           <a
-                            href={lead.linkedinUrl}
+                            href={normalizeLinkedInUrl(lead.linkedinUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="shrink-0 rounded p-0.5 text-brand-blue-light transition hover:bg-brand-blue/15 hover:text-white"

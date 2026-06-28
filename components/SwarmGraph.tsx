@@ -34,6 +34,8 @@ type SwarmGraphProps = {
   reactions: SwarmReactionRow[] | undefined;
   isSwarmRunning?: boolean;
   emptyMessage?: string;
+  /** Outbound draft shown on the central email hub node. */
+  draftMessage?: string;
   /** When set, overrides the default ambient-leads query (e.g. unselected run leads). */
   ambientLeads?: AmbientLeadRow[];
   /** When true, graph fills its container height instead of a fixed 420px. */
@@ -52,10 +54,17 @@ type GraphCanvasProps = {
   onBackgroundClick: () => void;
 };
 
-const isActiveGraphNode = (node: object): boolean =>
-  !(node as SwarmGraphNode).isAmbient;
+const isActiveGraphNode = (node: object): boolean => {
+  const graphNode = node as SwarmGraphNode;
+  return !graphNode.isAmbient;
+};
 
-function activeNodeRadius(val: number, totalActive: number): number {
+function activeNodeRadius(
+  val: number,
+  totalActive: number,
+  isEmailHub = false,
+): number {
+  if (isEmailHub) return 1.15;
   const densityScale = Math.max(0.5, Math.min(1, 7 / Math.sqrt(Math.max(totalActive, 1))));
   return (0.85 + val * 0.08) * densityScale;
 }
@@ -154,6 +163,7 @@ const GraphCanvas = memo(function GraphCanvas({
   const graphRef = useRef<ForceGraphMethods | undefined>(undefined);
   const graphDataRef = useRef(graphData);
   const nodeMeshesRef = useRef(new Map<string, GlowNodeParts>());
+  const bloomPassRef = useRef<UnrealBloomPass | null>(null);
   const bloomAddedRef = useRef(false);
   const sceneDecorRef = useRef<ReturnType<typeof decorateSwarmScene> | null>(null);
   const animRef = useRef(0);
@@ -166,6 +176,7 @@ const GraphCanvas = memo(function GraphCanvas({
     readyRef.current = false;
     zoomFittedRef.current = false;
     bloomAddedRef.current = false;
+    bloomPassRef.current = null;
     nodeMeshesRef.current.clear();
     sceneDecorRef.current?.dispose();
     sceneDecorRef.current = null;
@@ -176,6 +187,23 @@ const GraphCanvas = memo(function GraphCanvas({
       nodeMeshesRef.current.clear();
     };
   }, [graphData.nodes.length, displayRound]);
+
+  useEffect(() => {
+    zoomFittedRef.current = false;
+    const graph = graphRef.current;
+    if (!graph || width <= 0 || height <= 0) return;
+
+    const renderer = graph.renderer();
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    const cam = graph.camera() as THREE.PerspectiveCamera;
+    cam.aspect = width / height;
+    cam.updateProjectionMatrix();
+
+    bloomPassRef.current?.setSize(width, height);
+    graph.postProcessingComposer().setSize(width, height);
+  }, [width, height]);
 
   const handleEngineTick = useCallback(() => {
     const graph = graphRef.current;
@@ -197,6 +225,7 @@ const GraphCanvas = memo(function GraphCanvas({
         0.35,
         0.22,
       );
+      bloomPassRef.current = bloomPass;
       graph.postProcessingComposer().addPass(bloomPass);
       sceneDecorRef.current = decorateSwarmScene(graph.scene());
       bloomAddedRef.current = true;
@@ -210,11 +239,13 @@ const GraphCanvas = memo(function GraphCanvas({
     for (const node of graphDataRef.current.nodes) {
       const parts = nodeMeshesRef.current.get(node.id);
       if (!parts) continue;
-      const radius = node.isAmbient
-        ? 0.18
-        : activeNodeRadius(node.val, activeNodeCount);
+      const radius = node.isEmailHub
+        ? activeNodeRadius(node.val, activeNodeCount, true)
+        : node.isAmbient
+          ? 0.18
+          : activeNodeRadius(node.val, activeNodeCount);
       const emissive =
-        !node.isAmbient && !node.sentiment && isSwarmRunning
+        !node.isAmbient && !node.isEmailHub && !node.sentiment && isSwarmRunning
           ? node.emissiveIntensity + Math.sin(performance.now() * 0.004) * 0.08
           : node.emissiveIntensity;
       updateGlowNode(
@@ -230,9 +261,11 @@ const GraphCanvas = memo(function GraphCanvas({
   const handleNodeThreeObject = useCallback(
     (node: object) => {
       const graphNode = node as SwarmGraphNode;
-      const radius = graphNode.isAmbient
-        ? 0.18
-        : activeNodeRadius(graphNode.val, activeNodeCount);
+      const radius = graphNode.isEmailHub
+        ? activeNodeRadius(graphNode.val, activeNodeCount, true)
+        : graphNode.isAmbient
+          ? 0.18
+          : activeNodeRadius(graphNode.val, activeNodeCount);
       const parts = createGlowNode(
         graphNode.color,
         graphNode.emissiveIntensity,
@@ -261,19 +294,25 @@ const GraphCanvas = memo(function GraphCanvas({
       linkColor={(link) => (link as SwarmGraphLink).color}
       linkWidth={(link) => {
         const l = link as SwarmGraphLink;
+        if (l.isHubLink) return 0.28;
         if (l.isCrossSegment) return 0.08;
-        if (displayRound === 2 && l.peerActivated) return 0.32;
+        if ((displayRound === 2 || displayRound === 3) && l.peerActivated) return 0.32;
         return 0.18;
       }}
-      linkOpacity={0.14}
-      linkCurvature={0.28}
+      linkOpacity={displayRound === 2 || displayRound === 3 ? 0.22 : 0.18}
+      linkCurvature={(link) => ((link as SwarmGraphLink).isHubLink ? 0.12 : 0.28)}
       linkResolution={8}
       linkDirectionalParticles={(link) => {
         const l = link as SwarmGraphLink;
         if (l.isCrossSegment) return 0;
-        return displayRound === 2 && l.peerActivated ? 3 : 1;
+        if (l.isHubLink) return displayRound === 1 ? 4 : 2;
+        return (displayRound === 2 || displayRound === 3) && l.peerActivated ? 5 : 0;
       }}
-      linkDirectionalParticleSpeed={0.004}
+      linkDirectionalParticleSpeed={(link) => {
+        const l = link as SwarmGraphLink;
+        if (l.isHubLink) return 0.006;
+        return (displayRound === 2 || displayRound === 3) && l.peerActivated ? 0.007 : 0.004;
+      }}
       linkDirectionalParticleWidth={0.45}
       linkDirectionalParticleColor={(link) => (link as SwarmGraphLink).color}
       d3AlphaDecay={0.018}
@@ -288,7 +327,8 @@ const GraphCanvas = memo(function GraphCanvas({
       }}
       onNodeClick={(node) => {
         const graphNode = node as SwarmGraphNode;
-        if (!graphNode.isAmbient) onNodeClick(graphNode);
+        if (graphNode.isAmbient || graphNode.isEmailHub) return;
+        onNodeClick(graphNode);
       }}
       onBackgroundClick={onBackgroundClick}
     />
@@ -298,10 +338,12 @@ const GraphCanvas = memo(function GraphCanvas({
 
 function NodeDetailPopup({
   node,
+  open,
   popupRef,
   onClose,
 }: {
-  node: SwarmGraphNode;
+  node: SwarmGraphNode | null;
+  open: boolean;
   popupRef: MutableRefObject<HTMLDivElement | null>;
   onClose: () => void;
 }) {
@@ -309,10 +351,16 @@ function NodeDetailPopup({
     <div
       ref={popupRef}
       role="dialog"
-      aria-label={`${node.label} agent response`}
-      className="swarm-node-popup pointer-events-auto absolute z-[25] hidden w-[300px] rounded-xl border border-stone-700/80 bg-cream-deep/95 p-0 shadow-2xl backdrop-blur-md"
-      style={{ transform: "translateY(-50%)" }}
+      aria-label={node ? `${node.label} agent response` : undefined}
+      aria-modal="true"
+      aria-hidden={!open}
+      className="swarm-node-popup pointer-events-auto absolute z-[25] w-[300px] rounded-xl border border-stone-700/80 bg-cream-deep/95 p-0 shadow-2xl backdrop-blur-md"
+      style={{ transform: "translateY(-50%)", display: "none" }}
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
     >
+      {open && node ? (
+        <>
       <div className="flex items-start justify-between gap-2 border-b border-stone-800 px-4 py-3">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-stone-100">{node.label}</h3>
@@ -323,7 +371,11 @@ function NodeDetailPopup({
         </div>
         <button
           type="button"
-          onClick={onClose}
+          onClick={(event) => {
+            event.stopPropagation();
+            onClose();
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
           className="shrink-0 rounded-md p-1 text-stone-500 transition hover:bg-stone-800 hover:text-stone-200"
           aria-label="Close"
         >
@@ -364,18 +416,9 @@ function NodeDetailPopup({
           </div>
         ) : null}
       </dl>
+        </>
+      ) : null}
     </div>
-  );
-}
-
-function resolveFocusedGraphNode(
-  focusedNode: SwarmGraphNode | null,
-  nodes: SwarmGraphNode[],
-): SwarmGraphNode | null {
-  if (!focusedNode) return null;
-  return (
-    nodes.find((node) => node.id === focusedNode.id && !node.isAmbient) ??
-    focusedNode
   );
 }
 
@@ -384,6 +427,7 @@ export function SwarmGraph({
   reactions,
   isSwarmRunning = false,
   emptyMessage = "No personas to display.",
+  draftMessage,
   ambientLeads: ambientLeadsOverride,
   fillContainer = false,
 }: SwarmGraphProps) {
@@ -393,14 +437,15 @@ export function SwarmGraph({
   const graphApiRef = useRef<ForceGraphMethods | undefined>(undefined);
   const graphDataRef = useRef(buildSwarmGraphData([], []));
   const labelElsRef = useRef(new Map<string, HTMLDivElement>());
-  const focusedNodeRef = useRef<SwarmGraphNode | null>(null);
+  const focusedNodeIdRef = useRef<string | null>(null);
+  const suppressNextNodeClickRef = useRef(false);
   const rafRef = useRef(0);
 
-  const [dimensions, setDimensions] = useState({ width: 640, height: 480 });
-  const [focusedNode, setFocusedNode] = useState<SwarmGraphNode | null>(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [displayRound, setDisplayRound] = useState<SwarmDisplayRound>(1);
 
-  focusedNodeRef.current = focusedNode;
+  focusedNodeIdRef.current = focusedNodeId;
 
   const safeReactions = reactions ?? [];
   const safePersonas = personas ?? [];
@@ -449,13 +494,23 @@ export function SwarmGraph({
         displayReactions,
         displayRound,
         filteredAmbientLeads,
+        draftMessage,
       ),
-    [safePersonas, displayReactions, displayRound, filteredAmbientLeads],
+    [safePersonas, displayReactions, displayRound, filteredAmbientLeads, draftMessage],
   );
 
   const activeNodeCount = safePersonas.length || 6;
 
   graphDataRef.current = graphData;
+
+  const focusedGraphNode = useMemo(() => {
+    if (!focusedNodeId) return null;
+    return (
+      graphData.nodes.find(
+        (node) => node.id === focusedNodeId && !node.isAmbient && !node.isEmailHub,
+      ) ?? null
+    );
+  }, [focusedNodeId, graphData.nodes]);
 
   const nodeIds = useMemo(
     () => graphData.nodes.map((node) => node.id).join(","),
@@ -480,14 +535,18 @@ export function SwarmGraph({
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      setDimensions({
-        width: Math.floor(rect.width),
-        height: Math.floor(rect.height),
-      });
-    }
-  }, []);
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setDimensions({
+          width: Math.floor(rect.width),
+          height: Math.floor(rect.height),
+        });
+      }
+    };
+    measure();
+    requestAnimationFrame(measure);
+  }, [fillContainer]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -513,6 +572,8 @@ export function SwarmGraph({
       el.dataset.id = node.id;
       if (node.isAmbient) {
         el.className = "swarm-node-label swarm-node-label--ambient absolute";
+      } else if (node.isEmailHub) {
+        el.className = "swarm-node-label swarm-node-label--email absolute";
       } else if (node.sentiment) {
         el.className = `swarm-node-label swarm-node-label--${node.sentiment} absolute`;
       } else if (isSwarmRunning) {
@@ -552,27 +613,34 @@ export function SwarmGraph({
             continue;
           }
           el.style.display = "block";
-          if (!node.isAmbient) {
+          if (!node.isAmbient && !node.isEmailHub) {
             const sentimentClass = node.sentiment
               ? `swarm-node-label--${node.sentiment}`
               : isSwarmRunning
                 ? "swarm-node-label--pending"
                 : "";
             el.className = `swarm-node-label absolute ${sentimentClass}`.trim();
+          } else if (node.isEmailHub) {
+            el.className = "swarm-node-label swarm-node-label--email absolute";
           }
           el.style.left = `${coords.x + (node.labelOffsetX ?? 0)}px`;
           el.style.top = `${coords.y + (node.labelOffsetY ?? (node.isAmbient ? 8 : 18))}px`;
         }
 
         const popupEl = popupRef.current;
-        const focusedId = focusedNodeRef.current?.id;
+        const focusedId = focusedNodeIdRef.current;
         const focused =
           focusedId != null
             ? graphDataRef.current.nodes.find((node) => node.id === focusedId)
             : null;
-        if (popupEl && focused && !focused.isAmbient) {
+
+        if (!popupEl || !focusedId || !focused || focused.isAmbient || focused.isEmailHub) {
+          if (popupEl) popupEl.style.display = "none";
+        } else {
           const world = nodeWorldPosition(focused);
-          if (world) {
+          if (!world) {
+            popupEl.style.display = "none";
+          } else {
             const coords = api.graph2ScreenCoords(world.x, world.y, world.z);
             if (
               Number.isFinite(coords.x) &&
@@ -592,11 +660,7 @@ export function SwarmGraph({
             } else {
               popupEl.style.display = "none";
             }
-          } else {
-            popupEl.style.display = "none";
           }
-        } else if (popupEl) {
-          popupEl.style.display = "none";
         }
       }
       rafRef.current = requestAnimationFrame(loop);
@@ -612,6 +676,34 @@ export function SwarmGraph({
   }, [hasRound3Data]);
 
   useEffect(() => {
+    setFocusedNodeId(null);
+  }, [displayRound]);
+
+  useEffect(() => {
+    if (!focusedNodeId) return;
+    function onPointerDown(event: PointerEvent) {
+      const popup = popupRef.current;
+      if (popup && !popup.contains(event.target as globalThis.Node)) {
+        suppressNextNodeClickRef.current = true;
+        setFocusedNodeId(null);
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [focusedNodeId]);
+
+  useEffect(() => {
+    if (!focusedNodeId) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setFocusedNodeId(null);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [focusedNodeId]);
+
+  useEffect(() => {
     if (displayRound === 2 && !hasRound2Data) {
       setDisplayRound(1);
     }
@@ -619,14 +711,21 @@ export function SwarmGraph({
 
   useEffect(() => {
     const peerCount = displayRound === 3 ? round3Count : round2Count;
-    if (peerCount === 0 || (displayRound !== 2 && displayRound !== 3)) return;
+    const shouldPulse =
+      displayRound === 1 ||
+      ((displayRound === 2 || displayRound === 3) && peerCount > 0);
+    if (!shouldPulse) return;
     const interval = window.setInterval(() => {
       const api = graphApiRef.current;
       if (!api) return;
       for (const link of graphDataRef.current.links) {
-        if (link.peerActivated) api.emitParticle(link);
+        if (displayRound === 1) {
+          if (link.isHubLink) api.emitParticle(link);
+        } else if (link.peerActivated || link.isHubLink) {
+          api.emitParticle(link);
+        }
       }
-    }, 2200);
+    }, 1400);
     return () => window.clearInterval(interval);
   }, [displayRound, round2Count, round3Count]);
 
@@ -637,7 +736,7 @@ export function SwarmGraph({
       fitActiveNodes(api, displayRound, activeNodeCount);
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [displayReactions.length, activeNodeCount, displayRound, safePersonas.length]);
+  }, [displayReactions.length, activeNodeCount, displayRound, safePersonas.length, dimensions.width, dimensions.height]);
 
   const simulatedCount = useMemo(() => {
     const targetRound =
@@ -677,7 +776,6 @@ export function SwarmGraph({
     (displayRound === 2 && round2Count > 0) ||
     (displayRound === 3 && round3Count > 0);
   const showRoundToggle = displayReactions.length > 0 || hasRound3Data;
-  const focusedGraphNode = resolveFocusedGraphNode(focusedNode, graphData.nodes);
 
   return (
     <div
@@ -687,6 +785,7 @@ export function SwarmGraph({
       }`}
     >
       <SwarmGraphBackdrop />
+      {dimensions.width > 0 && dimensions.height > 0 ? (
       <GraphCanvas
         graphData={graphData}
         width={dimensions.width}
@@ -696,11 +795,16 @@ export function SwarmGraph({
         isSwarmRunning={isSwarmRunning}
         onReady={handleGraphReady}
         onNodeClick={(node) => {
-          if (node.isAmbient) return;
-          setFocusedNode((prev) => (prev?.id === node.id ? null : node));
+          if (node.isAmbient || node.isEmailHub) return;
+          if (suppressNextNodeClickRef.current) {
+            suppressNextNodeClickRef.current = false;
+            return;
+          }
+          setFocusedNodeId((prev) => (prev === node.id ? null : node.id));
         }}
-        onBackgroundClick={() => setFocusedNode(null)}
+        onBackgroundClick={() => setFocusedNodeId(null)}
       />
+      ) : null}
 
       <SwarmGraphForeground active={safePersonas.length > 0} />
 
@@ -810,25 +914,24 @@ export function SwarmGraph({
             }`}
           >
             {displayRound === 3
-              ? "Rewritten emails — peer-influenced retest live on graph"
-              : "Original draft — peer influence pulsing through segments"}
+              ? "Rewritten emails — hub email plus peer-influenced retest"
+              : "Original — center email linked to every lead, peers pulsing within segments"}
           </p>
         </div>
       ) : displayRound === 1 && displayReactions.length > 0 ? (
         <div className="pointer-events-none absolute inset-x-0 top-20 z-10 flex justify-center">
           <p className="rounded-full border border-white/10 bg-black/35 px-4 py-1.5 text-xs text-white/45 backdrop-blur-sm">
-            Round 1 — solo reactions
+            Round 1 — solo reactions to the center email
           </p>
         </div>
       ) : null}
 
-      {focusedGraphNode ? (
-        <NodeDetailPopup
-          node={focusedGraphNode}
-          popupRef={popupRef}
-          onClose={() => setFocusedNode(null)}
-        />
-      ) : null}
+      <NodeDetailPopup
+        node={focusedGraphNode}
+        open={focusedGraphNode !== null}
+        popupRef={popupRef}
+        onClose={() => setFocusedNodeId(null)}
+      />
     </div>
   );
 }

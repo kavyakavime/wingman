@@ -43,6 +43,8 @@ export type SwarmGraphNode = {
   citedSignal?: string;
   round?: 1 | 2 | 3;
   isActive: boolean;
+  /** Central outbound email — fixed at origin. */
+  isEmailHub?: boolean;
   /** Visual-only population node — not in swarm, no labels/interaction. */
   isAmbient?: boolean;
   /** Screen-space label nudge so cluster-mate names don't overlap. */
@@ -63,6 +65,8 @@ export type SwarmGraphLink = {
   source: string;
   target: string;
   color: string;
+  /** Spoke from the central email hub to a lead. */
+  isHubLink?: boolean;
   /** Flowing particles when round-2 peer influence is active. */
   peerActivated: boolean;
   isCrossSegment?: boolean;
@@ -85,40 +89,66 @@ export const AMBIENT_EMISSIVE = 0.18;
 export const SWARM_GRAPH_BG = "#040408";
 export const SWARM_GRAPH_BG_NUM = 0x040408;
 
-/** Sentiment palette — pale yellow / soft green / muted red. */
+export const EMAIL_HUB_NODE_ID = "__swarm_email_hub__";
+export const EMAIL_HUB_COLOR = "#f5f0e8";
+export const EMAIL_HUB_VAL = 6;
+export const EMAIL_HUB_EMISSIVE = 0.72;
+export const EMAIL_HUB_LINK_COLOR = "#d4cfc4";
+
+/** Sentiment palette — green (positive) / yellow (neutral) / red (objecting). */
 export const SENTIMENT_GRAPH_COLORS: Record<SwarmSentiment, string> = {
-  positive: "#e8d070",
-  neutral: "#88d4a0",
-  objecting: "#d47a72",
+  positive: "#34d399",
+  neutral: "#facc15",
+  objecting: "#f87171",
 };
 
-/** Where the 3 active segment pairs anchor — kept tight for ≤25 nodes. */
-export const ACTIVE_SEGMENT_CENTERS: Record<
-  PersonaSegment,
-  { x: number; y: number; z: number }
-> = {
-  scaled: { x: -26, y: 12, z: 4 },
-  early_stage: { x: 28, y: -6, z: -2 },
-  vertical_specialist: { x: 0, y: -22, z: 7 },
-};
-
-function activeClusterPosition(
-  segment: PersonaSegment,
-  indexInSegment: number,
-  totalInSegment: number,
-  globalIndex: number,
+function leadOrbitPosition(
+  index: number,
+  total: number,
 ): { x: number; y: number; z: number } {
-  const center = ACTIVE_SEGMENT_CENTERS[segment];
-  const angle =
-    (indexInSegment / Math.max(totalInSegment, 1)) * Math.PI * 2 + globalIndex * 0.65;
-  const spread = 5 + Math.sqrt(totalInSegment) * 2.4 + indexInSegment * 1.1;
-  const layer = (indexInSegment % 3) * 2;
+  const angle = (index / Math.max(total, 1)) * Math.PI * 2 - Math.PI / 2;
+  const radius = 34 + Math.sqrt(total) * 2.2;
+  const wobble = (index % 3) * 2 - 2;
+  return {
+    x: Math.cos(angle) * radius,
+    y: Math.sin(angle) * radius * 0.52 + wobble,
+    z: Math.sin(angle * 2) * 6,
+  };
+}
+
+function buildEmailHubNode(draftMessage?: string): SwarmGraphNode {
+  const trimmed = draftMessage?.trim() ?? "";
+  const subjectMatch = trimmed.match(/^Subject:\s*(.+)$/im);
+  const subject = subjectMatch?.[1]?.trim();
+  const label = subject
+    ? `Email — ${subject.slice(0, 48)}${subject.length > 48 ? "…" : ""}`
+    : trimmed
+      ? `Email — ${trimmed.slice(0, 48)}${trimmed.length > 48 ? "…" : ""}`
+      : "Outbound email";
 
   return {
-    x: center.x + Math.cos(angle) * spread,
-    y: center.y + Math.sin(angle) * spread * 0.48 + layer,
-    z: center.z + Math.sin(angle * 1.25) * spread * 0.22,
+    id: EMAIL_HUB_NODE_ID,
+    label,
+    shortLabel: "Email",
+    segment: "scaled",
+    isActive: true,
+    isEmailHub: true,
+    color: EMAIL_HUB_COLOR,
+    val: EMAIL_HUB_VAL,
+    emissiveIntensity: EMAIL_HUB_EMISSIVE,
+    x: 0,
+    y: 0,
+    z: 0,
+    fx: 0,
+    fy: 0,
+    fz: 0,
+    labelOffsetY: 16,
   };
+}
+
+function emailHubLinkColor(node: SwarmGraphNode): string {
+  if (node.sentiment) return SENTIMENT_GRAPH_COLORS[node.sentiment];
+  return EMAIL_HUB_LINK_COLOR;
 }
 
 function ambientNodePosition(
@@ -127,21 +157,17 @@ function ambientNodePosition(
 ): { x: number; y: number; z: number } {
   const hash = hashLeadId(leadId);
   const clusterIdx = index % SEGMENT_ORDER.length;
-  const cluster = SEGMENT_ORDER[clusterIdx];
-  const anchor = ACTIVE_SEGMENT_CENTERS[cluster];
   const slot = Math.floor(index / SEGMENT_ORDER.length);
-
-  // Three outer lobes — pushed away from scene center so rings don't overlap in the middle
-  const outward = Math.atan2(anchor.y, anchor.x);
+  const anchorAngle = (clusterIdx / SEGMENT_ORDER.length) * Math.PI * 2 - Math.PI / 2;
   const lobeDistance = 92 + (hash % 22) + (slot % 3) * 8;
   const lobeCenter = {
-    x: Math.cos(outward) * lobeDistance,
-    y: Math.sin(outward) * lobeDistance * 0.72,
-    z: anchor.z * 0.45 + ((hash >> 4) % 18) - 9,
+    x: Math.cos(anchorAngle) * lobeDistance,
+    y: Math.sin(anchorAngle) * lobeDistance * 0.72,
+    z: ((hash >> 4) % 18) - 9,
   };
 
   const localAngle =
-    outward + Math.PI / 2 + slot * 0.58 + ((hash % 360) * Math.PI) / 180 * 0.32;
+    anchorAngle + Math.PI / 2 + slot * 0.58 + ((hash % 360) * Math.PI) / 180 * 0.32;
   const localRadius = 16 + (hash % 16) + (slot % 5) * 5;
 
   return {
@@ -316,6 +342,7 @@ export function buildSwarmGraphData(
   reactions: SwarmReactionRow[],
   displayRound: SwarmDisplayRound = 2,
   ambientLeads: AmbientLeadRow[] = [],
+  draftMessage?: string,
 ): SwarmGraphData {
   const reactionByLead = new Map(
     reactions.map((reaction) => [reaction.leadId, reaction]),
@@ -327,28 +354,6 @@ export function buildSwarmGraphData(
         ? reactions.some((reaction) => (reaction.round ?? 1) === 3)
         : false;
 
-  const segmentCounts: Record<PersonaSegment, number> = {
-    scaled: 0,
-    early_stage: 0,
-    vertical_specialist: 0,
-  };
-
-  const segmentTotals: Record<PersonaSegment, number> = {
-    scaled: 0,
-    early_stage: 0,
-    vertical_specialist: 0,
-  };
-
-  personas.forEach((persona, index) => {
-    const reaction = reactionByLead.get(persona._id);
-    const segment = segmentForPersona(
-      persona.personName,
-      reaction?.segment ?? persona.segment,
-      index,
-    );
-    segmentTotals[segment] += 1;
-  });
-
   const nodes: SwarmGraphNode[] = personas.map((persona, index) => {
     const id = persona._id;
     const label = persona.personName ?? "Unknown";
@@ -358,15 +363,8 @@ export function buildSwarmGraphData(
       reaction?.segment ?? persona.segment,
       index,
     );
-    const segmentIndex = segmentCounts[segment];
-    segmentCounts[segment] += 1;
 
-    const clusterPos = activeClusterPosition(
-      segment,
-      segmentIndex,
-      segmentTotals[segment],
-      index,
-    );
+    const clusterPos = leadOrbitPosition(index, personas.length);
     const labelAngle = (index / Math.max(personas.length, 1)) * Math.PI * 2;
     const labelOffsetX = Math.cos(labelAngle) * 10;
     const labelOffsetY = 10 + Math.sin(labelAngle) * 4;
@@ -419,48 +417,44 @@ export function buildSwarmGraphData(
   });
 
   const links: SwarmGraphLink[] = [];
-  for (let i = 0; i < nodes.length; i += 1) {
-    for (let j = i + 1; j < nodes.length; j += 1) {
-      const a = nodes[i];
-      const b = nodes[j];
-      if (a.isAmbient || b.isAmbient) continue;
-      if (a.segment === b.segment) {
-        links.push({
-          source: a.id,
-          target: b.id,
-          color: a.sentiment
-            ? SENTIMENT_GRAPH_COLORS[a.sentiment]
-            : SEGMENT_GRAPH_COLORS[a.segment],
-          peerActivated: (displayRound === 2 || displayRound === 3) && hasPeerRound && reactions.length > 0,
-        });
-      }
-    }
+  const emailHub = buildEmailHubNode(draftMessage);
+
+  for (const node of nodes) {
+    if (node.isAmbient) continue;
+    links.push({
+      source: EMAIL_HUB_NODE_ID,
+      target: node.id,
+      color: emailHubLinkColor(node),
+      isHubLink: true,
+      peerActivated: false,
+    });
   }
 
-  const segmentFirst = new Map<PersonaSegment, string>();
-  for (const node of nodes) {
-    if (node.isAmbient || !node.isActive) continue;
-    if (!segmentFirst.has(node.segment)) {
-      segmentFirst.set(node.segment, node.id);
-    }
-  }
-  const segIds = SEGMENT_ORDER.map((s) => segmentFirst.get(s)).filter(Boolean) as string[];
-  for (let i = 0; i < segIds.length; i += 1) {
-    for (let j = i + 1; j < segIds.length; j += 1) {
-      links.push({
-        source: segIds[i],
-        target: segIds[j],
-        color: "#ffffff",
-        peerActivated: false,
-        isCrossSegment: true,
-      });
+  if (displayRound === 2 || displayRound === 3) {
+    for (let i = 0; i < nodes.length; i += 1) {
+      for (let j = i + 1; j < nodes.length; j += 1) {
+        const a = nodes[i];
+        const b = nodes[j];
+        if (a.isAmbient || b.isAmbient) continue;
+        if (a.segment === b.segment) {
+          links.push({
+            source: a.id,
+            target: b.id,
+            color: a.sentiment
+              ? SENTIMENT_GRAPH_COLORS[a.sentiment]
+              : SEGMENT_GRAPH_COLORS[a.segment],
+            peerActivated:
+              hasPeerRound && reactions.length > 0,
+          });
+        }
+      }
     }
   }
 
   const activeLeadIds = new Set(personas.map((persona) => persona._id));
   const ambientNodes = buildAmbientNodes(ambientLeads, activeLeadIds);
 
-  return { nodes: [...nodes, ...ambientNodes], links };
+  return { nodes: [emailHub, ...nodes, ...ambientNodes], links };
 }
 
 /** Force sim tuning — activeCount excludes ambient population nodes. */
@@ -489,5 +483,6 @@ export function chargeStrengthForNode(
   node: SwarmGraphNode,
   baseCharge: number,
 ): number {
-  return node.isAmbient ? 0 : baseCharge;
+  if (node.isAmbient || node.isEmailHub) return 0;
+  return baseCharge;
 }

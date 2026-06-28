@@ -343,6 +343,7 @@ export type PeerRound1Summary = {
   personName: string;
   sentiment: PersonaReactionSentiment;
   citedSignal: string;
+  reasoningText?: string;
 };
 
 export type OwnRound1Reaction = PersonaReaction;
@@ -352,11 +353,51 @@ function buildPeerSummaryBlock(peers: PeerRound1Summary[]): string {
     return "No peer reactions available (solo run).";
   }
   return peers
-    .map(
-      (peer) =>
-        `- ${peer.personName}: ${peer.sentiment} — "${peer.citedSignal.trim()}"`,
-    )
+    .map((peer) => {
+      const reasoning = peer.reasoningText?.trim();
+      const reasoningSnippet =
+        reasoning && reasoning.length > 0
+          ? ` — "${reasoning.slice(0, 140)}${reasoning.length > 140 ? "…" : ""}"`
+          : "";
+      return `- ${peer.personName}: ${peer.sentiment} — "${peer.citedSignal.trim()}"${reasoningSnippet}`;
+    })
     .join("\n");
+}
+
+function buildPeerConsensusHint(
+  peers: PeerRound1Summary[],
+  ownSentiment: PersonaReactionSentiment,
+): string {
+  if (peers.length === 0) return "";
+
+  const counts: Record<PersonaReactionSentiment, number> = {
+    positive: 0,
+    neutral: 0,
+    objecting: 0,
+  };
+  for (const peer of peers) {
+    counts[peer.sentiment] += 1;
+  }
+
+  const dominant = (Object.keys(counts) as PersonaReactionSentiment[]).reduce(
+    (best, key) => (counts[key] > counts[best] ? key : best),
+    "neutral" as PersonaReactionSentiment,
+  );
+  const dominantCount = counts[dominant];
+  const dominantPct = dominantCount / peers.length;
+
+  if (dominantPct < 0.5 || dominant === ownSentiment) {
+    return "";
+  }
+
+  return [
+    `Peer consensus: ${dominantCount}/${peers.length} (${Math.round(dominantPct * 100)}%) reacted ${dominant}.`,
+    ownSentiment !== dominant
+      ? `You initially felt ${ownSentiment}. In B2B buying committees, visible peer alignment usually pulls stance at least one step — soften or sharpen unless you have a strong personal counter-reason in your profile.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function gatherRound2CitableSignals(
@@ -377,9 +418,11 @@ function buildPeerInfluenceSystemPrompt(): string {
   return [
     "You simulate how a specific B2B executive would react after seeing how their peers reacted to the same cold email.",
     "Write reasoningText in first person as that executive — direct, specific, not marketing copy.",
-    "You already formed an initial reaction in round 1. Now you see a compact summary of other personas' sentiment and cited signal only.",
-    "Decide whether peer reactions change your stance. If they do, update sentiment and reasoningText and cite what changed your mind.",
-    "If peers do not change your stance, keep your original sentiment and explain why in reasoningText (you may reuse your original citedSignal).",
+    "You already formed an initial reaction in round 1. Now you see peer sentiment, cited signals, and brief reasoning.",
+    "Peer influence is real: when a majority of peers share a sentiment, you should usually move at least one step toward their consensus (positive→neutral, neutral→objecting, or the reverse) unless your profile gives a strong personal reason to hold firm.",
+    "When peers split evenly, keep your stance but acknowledge the mixed signals in reasoningText.",
+    "If peer reactions change your stance, update sentiment and reasoningText and cite what changed your mind.",
+    "If peers only partially move you, shift sentiment one step (not two) and explain the nuance.",
     "citedSignal MUST be a verbatim excerpt copied from one of the allowed sources — peer cited signals, your round-1 cited signal, or profile fields listed in context.",
     "Do not invent peer quotes or profile facts not present in the prompt.",
   ].join(" ");
@@ -391,6 +434,7 @@ function buildPeerInfluenceUserPrompt(
   ownRound1: OwnRound1Reaction,
   peerSummaryBlock: string,
   citableSignals: string[],
+  peerConsensusHint: string,
 ): string {
   return [
     `You are ${lead.personName}. You already reacted to this cold email in round 1.`,
@@ -401,17 +445,19 @@ function buildPeerInfluenceUserPrompt(
     `Cited signal: "${ownRound1.citedSignal}"`,
     "--- END ROUND 1 ---",
     "",
-    "--- OTHER PERSONAS' ROUND 1 REACTIONS (sentiment + cited signal only) ---",
+    "--- OTHER PERSONAS' ROUND 1 REACTIONS ---",
     peerSummaryBlock,
     "--- END PEER SUMMARY ---",
     "",
+    peerConsensusHint ? `--- PEER CONSENSUS ---\n${peerConsensusHint}\n--- END CONSENSUS ---\n` : "",
     "--- ORIGINAL DRAFT COLD EMAIL ---",
     draftMessage.trim(),
     "--- END DRAFT ---",
     "",
     "Does seeing how your peers reacted change your stance?",
+    "If a majority leaned one way, move at least one sentiment step toward them unless your profile contradicts it.",
     "If yes, update sentiment and reasoningText, citing what changed your mind.",
-    "If not, keep your original sentiment and explain why peers did not move you.",
+    "If only partially moved, shift one step and explain why you did not go further.",
     "",
     "Allowed sources for citedSignal (copy verbatim from one of these):",
     ...citableSignals.map((s) => `- "${s}"`),
@@ -455,6 +501,7 @@ export async function runPeerInfluenceReaction(
   }
 
   const peerSummaryBlock = buildPeerSummaryBlock(peers);
+  const peerConsensusHint = buildPeerConsensusHint(peers, ownRound1.sentiment);
   const systemPrompt = buildPeerInfluenceSystemPrompt();
   const userPrompt = buildPeerInfluenceUserPrompt(
     lead,
@@ -462,6 +509,7 @@ export async function runPeerInfluenceReaction(
     ownRound1,
     peerSummaryBlock,
     citableSignals,
+    peerConsensusHint,
   );
 
   let reaction = await callOpenAiStructured(apiKey, systemPrompt, userPrompt);

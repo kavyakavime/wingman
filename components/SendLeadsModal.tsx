@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   formatEmailEditorValue,
+  guessLeadEmail,
   parseEmailEditorValue,
   resolveLeadEmailContent,
 } from "@/lib/resolveLeadEmail";
@@ -87,7 +88,7 @@ export function SendLeadsModal({
         companyName: lead.companyName ?? "",
         segment: resolved.segment,
         source: resolved.source,
-        toEmail: "",
+        toEmail: guessLeadEmail(lead.personName, lead.companyName),
         addressLine1: "",
         addressLine2: "",
         addressCity: "",
@@ -356,10 +357,13 @@ export function SendLeadsModal({
                         type="email"
                         value={row.toEmail}
                         onChange={(e) => updateRow(row.leadId, { toEmail: e.target.value })}
-                        placeholder="name@company.com"
+                        placeholder="firstname@company.com"
                         disabled={row.sending}
                         className={inputClass}
                       />
+                      <span className="mt-1 block text-[10px] text-stone-500">
+                        Estimated from name + company — edit before sending.
+                      </span>
                     </label>
                   )}
                   <label className="block text-xs font-medium text-stone-400">

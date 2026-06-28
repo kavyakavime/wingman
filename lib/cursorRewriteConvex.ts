@@ -8,6 +8,7 @@ import { rewriteForSegmentWithCursorFn } from "./cursorRewriteShared";
 import { rewriteViaCursorCloudRest } from "./cursorCloudRest";
 import type { PersonaSegment } from "./segments";
 import type { RewriteForSegmentResult } from "./cursorRewriteShared";
+import type { SegmentObjection } from "./scoreCard";
 
 export type { RewriteForSegmentResult, RewriteGeneratedVia } from "./cursorRewriteShared";
 
@@ -20,6 +21,7 @@ export async function rewriteForSegment(
     openaiApiKey?: string;
     extraInstructions?: string;
     dominantSentiment?: import("./swarmGraphData").SwarmSentiment | null;
+    objections?: SegmentObjection[];
   },
 ): Promise<RewriteForSegmentResult> {
   return rewriteForSegmentWithCursorFn(

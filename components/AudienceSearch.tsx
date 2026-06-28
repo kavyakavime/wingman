@@ -9,6 +9,7 @@ import {
   deriveGraphPersonas,
   pickDisplayReactions,
 } from "../lib/swarmGraphData";
+import { normalizeLinkedInUrl } from "../lib/linkedinUrl";
 import { SwarmGraph } from "./SwarmGraph";
 import { Button } from "./ui/Button";
 import { Panel, PanelBody } from "./ui/Panel";
@@ -252,7 +253,7 @@ export function AudienceSearch() {
                     ? "bg-emerald-100 text-emerald-900"
                     : reaction.sentiment === "objecting"
                       ? "bg-rose-100 text-rose-900"
-                      : "bg-stone-700 text-stone-200";
+                      : "bg-amber-100 text-amber-900";
 
                 return (
                   <li
@@ -316,7 +317,7 @@ export function AudienceSearch() {
                   )}
                   {lead.linkedinUrl && (
                     <a
-                      href={lead.linkedinUrl}
+                      href={normalizeLinkedInUrl(lead.linkedinUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-xs text-brand-blue-light hover:underline"

@@ -87,6 +87,7 @@ export async function runPeerInfluenceRound(
             personName: reaction.personName,
             sentiment: reaction.sentiment,
             citedSignal: reaction.citedSignal,
+            reasoningText: reaction.reasoningText,
           }));
 
         const reaction = await runPeerInfluenceReaction(
