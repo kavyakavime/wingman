@@ -2,7 +2,7 @@
 
 **Test before you fly.**
 
-Wingman is a GTM simulation product: describe an ICP in plain English, pull real decision-makers, enrich them with live signals, run a cold email through a digital twin swarm built from those profiles, watch objections cluster by segment on a live 3D graph, rewrite per segment with Cursor, re-test, and send the winning variant — all in one loop.
+Wingman is a GTM simulation product: describe an ICP in plain English, pull real decision-makers, enrich them with live signals, run a cold email through a digital twin swarm built from those profiles, watch objections cluster by segment on a live 3D graph, rewrite per segment with Cursor SDK, re-test, and send the winning variant — all in one loop.
 
 Most outbound tools optimize sending. Wingman optimizes knowing whether a message will work before it leaves the inbox.
 
