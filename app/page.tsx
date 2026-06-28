@@ -1,9 +1,11 @@
+import { AudienceSearch } from "@/components/AudienceSearch";
+import { LockedPersonasPanel } from "@/components/LockedPersonasPanel";
 import { PingStatus } from "@/components/PingStatus";
 
 export default function Home() {
   return (
-    <div className="flex min-h-full flex-col items-center justify-center bg-zinc-50 px-6 py-24 font-sans dark:bg-black">
-      <main className="w-full max-w-lg space-y-8">
+    <div className="flex min-h-full flex-col items-center bg-zinc-50 px-6 py-16 font-sans dark:bg-black">
+      <main className="w-full max-w-2xl space-y-10">
         <div className="space-y-3 text-center">
           <p className="text-sm font-medium uppercase tracking-widest text-zinc-500">
             YC Hackathon
@@ -16,10 +18,19 @@ export default function Home() {
             audience — before you send a single one.
           </p>
         </div>
-        <PingStatus />
-        <p className="text-center text-xs text-zinc-400">
-          Skeleton deployed · Fiber · Orange Slice · Swarm · Graph coming next
-        </p>
+
+        <AudienceSearch />
+
+        <LockedPersonasPanel />
+
+        <details className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+          <summary className="cursor-pointer px-4 py-3 text-sm text-zinc-500">
+            Dev: Convex connection
+          </summary>
+          <div className="border-t border-zinc-200 p-4 dark:border-zinc-800">
+            <PingStatus />
+          </div>
+        </details>
       </main>
     </div>
   );

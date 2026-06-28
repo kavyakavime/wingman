@@ -28,6 +28,8 @@
 # secrets (never commit)
 /secrets/
 /credentials/
+# Orange Slice CLI API key (default path: ~/.config/orangeslice/config.json)
+.config/orangeslice/
 
 # debug
 npm-debug.log*

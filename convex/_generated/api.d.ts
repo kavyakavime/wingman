@@ -8,6 +8,9 @@
  * @module
  */
 
+import type * as enrichActions from "../enrichActions.js";
+import type * as fiberActions from "../fiberActions.js";
+import type * as leads from "../leads.js";
 import type * as ping from "../ping.js";
 
 import type {
@@ -17,6 +20,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  enrichActions: typeof enrichActions;
+  fiberActions: typeof fiberActions;
+  leads: typeof leads;
   ping: typeof ping;
 }>;
 
