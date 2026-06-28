@@ -23,13 +23,12 @@ import type { LeadRow } from "./LeadSpreadsheet";
 import { ChatModePicker, type ChatMode } from "./ChatModePicker";
 import type { IcpAttachmentPayload } from "@/lib/icpAttachment";
 import { readIcpAttachmentFile } from "@/lib/readIcpAttachment";
+import { channelLabel, type OutreachChannel } from "@/lib/outreachChannel";
 import {
   loadWorkspaceSession,
   patchWorkspaceSession,
   type StoredChatMessage,
 } from "@/lib/workspaceSession";
-
-export type OutreachChannel = "email" | "physical_mail" | "linkedin_dm";
 
 type ChatMessage =
   | { id: string; role: "user" | "assistant"; kind: "text"; content: string }
@@ -73,6 +72,7 @@ type ChatWorkflowProps = {
   onSwarmActiveChange: (active: boolean) => void;
   onOpenSendModal: () => void;
   onSimulationDraftChange: (draft: string) => void;
+  onOutreachChannelChange: (channel: OutreachChannel | null) => void;
 };
 
 function AttachIcon() {
@@ -113,12 +113,6 @@ function MicIcon({ active }: { active?: boolean }) {
 
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function channelLabel(channel: OutreachChannel): string {
-  if (channel === "email") return "Email";
-  if (channel === "physical_mail") return "Physical mail";
-  return "LinkedIn DM";
 }
 
 function CardDismissButton({ onDismiss }: { onDismiss: () => void }) {
@@ -307,6 +301,7 @@ export function ChatWorkflow({
   onSwarmActiveChange,
   onOpenSendModal,
   onSimulationDraftChange,
+  onOutreachChannelChange,
 }: ChatWorkflowProps) {
   const runKey = activeRunId ?? null;
   const chatRestoredForRunRef = useRef<string | null>(null);
@@ -451,6 +446,10 @@ export function ChatWorkflow({
   useEffect(() => {
     onSimulationDraftChange(activeDraft.trim() || draftMessage.trim());
   }, [activeDraft, draftMessage, onSimulationDraftChange]);
+
+  useEffect(() => {
+    onOutreachChannelChange(channel);
+  }, [channel, onOutreachChannelChange]);
 
   useEffect(() => {
     if (!sessionReady) return;

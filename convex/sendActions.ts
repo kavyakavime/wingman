@@ -8,6 +8,7 @@ import { inferLeadSegment } from "../lib/inferSegment";
 import { parseRewriteDraft } from "../lib/parseRewriteDraft";
 import { OrangeSliceApiError, sendOutreach } from "../lib/orangeslice";
 import { gmailDirectConfigured } from "../lib/gmailDirect";
+import { LobDirectError, sendViaLob, type LobAddress } from "../lib/lobDirect";
 import type { PersonaSegment } from "../lib/segments";
 
 type SendResult = {
@@ -241,6 +242,127 @@ export const sendLeadOutreach = action({
           {
             recipientEmail: toEmail,
             recipientLabel: lead.personName ?? toEmail,
+            segment,
+            subject,
+            bodyPreview: body.slice(0, 280) + (body.length > 280 ? "…" : ""),
+            success: false,
+            errorMessage: message,
+            sentAt,
+          },
+        ],
+      });
+      throw new Error(message);
+    }
+  },
+});
+
+export const sendLeadPhysicalMail = action({
+  args: {
+    leadId: v.id("leads"),
+    recipientName: v.string(),
+    addressLine1: v.string(),
+    addressLine2: v.optional(v.string()),
+    addressCity: v.string(),
+    addressState: v.string(),
+    addressZip: v.string(),
+    subject: v.string(),
+    body: v.string(),
+  },
+  handler: async (ctx, args): Promise<{
+    success: boolean;
+    letterId: string | null;
+    via: "lob";
+  }> => {
+    if (!process.env.LOB_API_KEY?.trim() || !process.env.LOB_FROM_ADDRESS?.trim()) {
+      throw new Error(
+        "Physical mail is not configured. Set LOB_API_KEY and LOB_FROM_ADDRESS in Convex env, then redeploy.",
+      );
+    }
+
+    const subject = args.subject.trim();
+    const body = args.body.trim();
+    if (!subject) {
+      throw new Error("Letter subject cannot be empty.");
+    }
+    if (!body) {
+      throw new Error("Letter body cannot be empty.");
+    }
+
+    const to: LobAddress = {
+      name: args.recipientName.trim(),
+      address_line1: args.addressLine1.trim(),
+      address_line2: args.addressLine2?.trim() || undefined,
+      address_city: args.addressCity.trim(),
+      address_state: args.addressState.trim().toUpperCase(),
+      address_zip: args.addressZip.trim(),
+    };
+
+    const lead = await ctx.runQuery(internal.leads.getLeadInternal, {
+      leadId: args.leadId,
+    });
+    if (!lead) {
+      throw new Error("Lead not found.");
+    }
+
+    const segment = inferLeadSegment({
+      _id: lead._id,
+      personName: lead.personName,
+      role: lead.role,
+      segment: lead.segment as PersonaSegment | undefined,
+    });
+
+    const addressLabel = [
+      to.name,
+      to.address_line1,
+      to.address_line2,
+      `${to.address_city}, ${to.address_state} ${to.address_zip}`,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    const sentAt = Date.now();
+
+    try {
+      const result = await sendViaLob({
+        to,
+        subject,
+        body,
+        description: `Wingman · ${lead.personName ?? "lead"} · ${segment}`,
+      });
+
+      await ctx.runMutation(internal.sentLog.appendEntriesInternal, {
+        entries: [
+          {
+            recipientEmail: addressLabel,
+            recipientLabel: lead.personName ?? to.name,
+            segment,
+            subject,
+            bodyPreview: body.slice(0, 280) + (body.length > 280 ? "…" : ""),
+            success: true,
+            messageId: result.letterId,
+            sentAt,
+          },
+        ],
+      });
+
+      return {
+        success: true,
+        letterId: result.letterId,
+        via: "lob",
+      };
+    } catch (error) {
+      const message =
+        error instanceof LobDirectError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Unknown Lob send error";
+
+      await ctx.runMutation(internal.sentLog.appendEntriesInternal, {
+        entries: [
+          {
+            recipientEmail: addressLabel,
+            recipientLabel: lead.personName ?? to.name,
             segment,
             subject,
             bodyPreview: body.slice(0, 280) + (body.length > 280 ? "…" : ""),

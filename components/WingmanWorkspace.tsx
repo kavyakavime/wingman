@@ -7,6 +7,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { DEFAULT_ICP } from "@/lib/mockLeads";
 import type { IcpAttachmentPayload } from "@/lib/icpAttachment";
 import type { PersonaSegment } from "@/lib/segments";
+import type { OutreachChannel } from "@/lib/outreachChannel";
 import {
   countReactionsByRound,
   deriveGraphPersonas,
@@ -41,6 +42,7 @@ export function WingmanWorkspace() {
     null,
   );
   const [simulationDraft, setSimulationDraft] = useState("");
+  const [outreachChannel, setOutreachChannel] = useState<OutreachChannel | null>(null);
   const [enrichPopupDismissed, setEnrichPopupDismissed] = useState(false);
   const [rewriteSelectedIds, setRewriteSelectedIds] = useState<Set<Id<"leads">>>(
     () => new Set(),
@@ -54,6 +56,7 @@ export function WingmanWorkspace() {
     setSelectedIds(new Set(session.selectedLeadIds));
     setLeftTab(session.leftTab);
     setSimulationDraft(session.simulationDraft);
+    setOutreachChannel(session.chat.channel);
     setEnrichPopupDismissed(session.enrichPopupDismissed);
     setSessionReady(true);
   }, []);
@@ -460,6 +463,7 @@ export function WingmanWorkspace() {
         onSwarmActiveChange={setIsSwarmActive}
         onOpenSendModal={openHeaderSendModal}
         onSimulationDraftChange={setSimulationDraft}
+        onOutreachChannelChange={setOutreachChannel}
       />
       </main>
 
@@ -471,6 +475,7 @@ export function WingmanWorkspace() {
         }}
         leads={sendModalLeads}
         simulationDraft={simulationDraft}
+        channel={outreachChannel}
       />
     </div>
   );
