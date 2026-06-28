@@ -7,11 +7,17 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "convex:dev": "convex dev"
+    "convex:dev": "convex dev",
+    "test:cursor-sdk": "npx tsx scripts/test-cursor-sdk.mts",
+    "test:orangeslice-send": "npx tsx scripts/test-orangeslice-send.mts",
+    "test:gmail-direct": "npx tsx scripts/test-gmail-direct.mts",
+    "connect:gmail": "npx tsx scripts/connect-gmail.mts"
   },
   "dependencies": {
+    "@cursor/sdk": "^1.0.22",
     "convex": "^1.42.0",
     "next": "16.2.9",
+    "nodemailer": "^9.0.1",
     "orangeslice": "^2.6.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -21,6 +27,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.185.0",

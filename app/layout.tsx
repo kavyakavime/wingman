@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import "./globals.css";
 
@@ -13,10 +13,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const displayFont = Instrument_Serif({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["400"],
+});
+
 export const metadata: Metadata = {
   title: "Wingman",
-  description:
-    "Test your cold outbound on a digital twin of your real audience before you send a single one.",
+  description: "Test your GTM on digital twins. Only ship what wins.",
 };
 
 export default function RootLayout({
@@ -27,9 +32,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${displayFont.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full bg-cream text-stone-100 antialiased">
         <ConvexClientProvider>{children}</ConvexClientProvider>
       </body>
     </html>

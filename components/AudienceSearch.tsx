@@ -10,6 +10,9 @@ import {
   pickDisplayReactions,
 } from "../lib/swarmGraphData";
 import { SwarmGraph } from "./SwarmGraph";
+import { Button } from "./ui/Button";
+import { Panel, PanelBody } from "./ui/Panel";
+import { SectionHeader } from "./ui/SectionHeader";
 import {
   SEGMENT_LABELS,
   SEGMENT_STYLES,
@@ -122,17 +125,15 @@ export function AudienceSearch() {
   }
 
   return (
-    <section className="w-full space-y-6">
-      <div className="space-y-2">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Find your audience
-        </h2>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Fiber AI pulls real, live people and companies matching your ICP.
-        </p>
-      </div>
+    <Panel id="audience">
+      <PanelBody className="space-y-6">
+        <SectionHeader
+          step={1}
+          title="Define your audience"
+          description="Describe your ICP in plain English. We pull real decision-makers from live data."
+        />
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <label htmlFor="icp" className="sr-only">
           Ideal customer profile
         </label>
@@ -141,36 +142,32 @@ export function AudienceSearch() {
           value={icp}
           onChange={(e) => setIcp(e.target.value)}
           rows={3}
-          className="w-full resize-none rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 shadow-sm outline-none ring-zinc-900/10 focus:ring-2 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
+          className="w-full resize-none rounded-xl border border-stone-800 bg-cream px-4 py-3.5 text-sm leading-relaxed text-stone-100 shadow-inner shadow-black/20 outline-none transition focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/10"
           placeholder="e.g. VPs of Sales at Series B fintech startups in New York"
         />
-        <button
-          type="submit"
-          disabled={isLoading || !icp.trim()}
-          className="w-full rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-        >
-          {isLoading ? "Searching Fiber…" : "Find my audience"}
-        </button>
+        <Button type="submit" fullWidth disabled={isLoading || !icp.trim()}>
+          {isLoading ? "Searching…" : "Find audience"}
+        </Button>
       </form>
 
       {clientError && (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {clientError}
         </p>
       )}
 
       {run?.status === "error" && run.errorMessage && (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {run.errorMessage}
         </p>
       )}
 
       {isLoading && (
-        <div className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
-          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-700 dark:border-t-zinc-100" />
+        <div className="flex items-center gap-3 rounded-lg border border-stone-800 bg-stone-900/40 px-4 py-4 text-sm text-stone-400">
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-stone-800 border-t-stone-300" />
           Querying Fiber for live matches…
           {leads && leads.length > 0 && (
-            <span className="ml-auto font-mono text-xs text-zinc-500">
+            <span className="ml-auto font-mono text-xs text-stone-500">
               {leads.length} found so far
             </span>
           )}
@@ -178,14 +175,14 @@ export function AudienceSearch() {
       )}
 
       {run?.status === "empty" && !isLoading && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
           No matches for this ICP. Try broadening the role, stage, or geography.
         </p>
       )}
 
       {leads && leads.length > 0 && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs text-zinc-500">
+          <div className="flex items-center justify-between text-xs text-stone-500">
             <span>
               {run?.resultType === "companies" ? "Companies" : "People"} from
               Fiber
@@ -198,31 +195,32 @@ export function AudienceSearch() {
 
           {canTestSwarm && (
             <div className="space-y-2">
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-stone-400">
                 <input
                   type="checkbox"
                   checked={includeRound2}
                   onChange={(e) => setIncludeRound2(e.target.checked)}
                   disabled={isSwarmRunning}
-                  className="h-4 w-4 rounded border-zinc-300"
+                  className="h-4 w-4 rounded border-stone-800"
                 />
                 Include round 2 (peer influence)
               </label>
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                fullWidth
                 onClick={handleTestSwarm}
                 disabled={isSwarmRunning}
-                className="w-full rounded-full border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-900"
               >
                 {isSwarmRunning
-                  ? "Running swarm on these results…"
-                  : "Test swarm on these results"}
-              </button>
+                  ? "Running swarm…"
+                  : "Test swarm on results"}
+              </Button>
             </div>
           )}
 
           {swarmError && (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+            <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
               {swarmError}
             </p>
           )}
@@ -251,18 +249,18 @@ export function AudienceSearch() {
                       : "Neutral";
                 const sentimentClass =
                   reaction.sentiment === "positive"
-                    ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+                    ? "bg-emerald-100 text-emerald-900"
                     : reaction.sentiment === "objecting"
-                      ? "bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200"
-                      : "bg-zinc-200 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200";
+                      ? "bg-rose-100 text-rose-900"
+                      : "bg-stone-700 text-stone-200";
 
                 return (
                   <li
                     key={`${reaction.leadId}-${reaction.round ?? 1}`}
-                    className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                    className="rounded-lg border border-stone-800 bg-stone-900/40 p-4"
                   >
                     <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-zinc-900 dark:text-zinc-100">
+                      <p className="font-medium text-stone-100">
                         {reaction.personName}
                       </p>
                       {segment && segmentStyle ? (
@@ -278,10 +276,10 @@ export function AudienceSearch() {
                         {sentimentLabel}
                       </span>
                     </div>
-                    <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
+                    <p className="text-sm leading-relaxed text-stone-300">
                       {reaction.reasoningText}
                     </p>
-                    <p className="mt-2 text-xs text-zinc-500">
+                    <p className="mt-2 text-xs text-stone-500">
                       Cited: &ldquo;{reaction.citedSignal}&rdquo;
                     </p>
                   </li>
@@ -290,38 +288,38 @@ export function AudienceSearch() {
             </ul>
           )}
 
-          <ul className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+          <ul className="divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-800 bg-cream/40">
             {leads.map((lead) => (
               <li
                 key={lead._id}
-                className="bg-white px-4 py-4 dark:bg-zinc-950"
+                className="bg-cream-deep px-5 py-4 transition hover:bg-cream/30"
               >
                 <div className="flex flex-col gap-1">
-                  <p className="font-medium text-zinc-900 dark:text-zinc-100">
+                  <p className="font-medium text-stone-100">
                     {lead.personName ?? lead.companyName ?? "Unknown"}
                   </p>
                   {lead.role && (
-                    <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                    <p className="text-sm text-stone-400">
                       {lead.role}
                     </p>
                   )}
                   {lead.companyName && lead.personName && (
-                    <p className="text-sm text-zinc-500">{lead.companyName}</p>
+                    <p className="text-sm text-stone-500">{lead.companyName}</p>
                   )}
                   {lead.socialSignal && (
-                    <p className="text-sm text-zinc-500 line-clamp-2">
+                    <p className="text-sm text-stone-500 line-clamp-2">
                       {lead.socialSignal}
                     </p>
                   )}
                   {lead.locality && (
-                    <p className="text-xs text-zinc-400">{lead.locality}</p>
+                    <p className="text-xs text-stone-400">{lead.locality}</p>
                   )}
                   {lead.linkedinUrl && (
                     <a
                       href={lead.linkedinUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                      className="text-xs text-brand-blue-light hover:underline"
                     >
                       LinkedIn profile
                     </a>
@@ -332,6 +330,7 @@ export function AudienceSearch() {
           </ul>
         </div>
       )}
-    </section>
+      </PanelBody>
+    </Panel>
   );
 }

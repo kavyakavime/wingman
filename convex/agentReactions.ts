@@ -23,6 +23,25 @@ export const listSwarmReactions = query({
   },
 });
 
+export const listAllInternal = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const reactions = await ctx.db.query("agent_reactions").collect();
+    reactions.sort((a, b) => a.createdAt - b.createdAt);
+
+    return Promise.all(
+      reactions.map(async (reaction) => {
+        const lead = await ctx.db.get(reaction.leadId);
+        return {
+          ...reaction,
+          round: reaction.round ?? 1,
+          personName: lead?.personName ?? "Unknown",
+        };
+      }),
+    );
+  },
+});
+
 export const listForLeadIdsInternal = internalQuery({
   args: { leadIds: v.array(v.id("leads")) },
   handler: async (ctx, args) => {
@@ -61,7 +80,7 @@ export const insertInternal = internalMutation({
     sentiment: agentSentiment,
     reasoningText: v.string(),
     citedSignal: v.string(),
-    round: v.optional(v.union(v.literal(1), v.literal(2))),
+    round: v.optional(v.union(v.literal(1), v.literal(2), v.literal(3))),
   },
   handler: async (ctx, args) => {
     const id = await ctx.db.insert("agent_reactions", {
@@ -74,6 +93,21 @@ export const insertInternal = internalMutation({
       createdAt: Date.now(),
     });
     return id;
+  },
+});
+
+export const clearRound3Internal = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const existing = await ctx.db.query("agent_reactions").collect();
+    let deletedCount = 0;
+    for (const row of existing) {
+      if (row.round === 3) {
+        await ctx.db.delete(row._id);
+        deletedCount += 1;
+      }
+    }
+    return { deletedCount };
   },
 });
 

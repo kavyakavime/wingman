@@ -34,20 +34,19 @@ export const SEGMENT_STYLES: Record<
   { badge: string; border: string; header: string }
 > = {
   scaled: {
-    badge:
-      "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200",
-    border: "border-violet-200 dark:border-violet-900",
-    header: "text-violet-700 dark:text-violet-300",
+    badge: "bg-violet-500/20 text-violet-300",
+    border: "border-violet-500/30",
+    header: "text-violet-400",
   },
   early_stage: {
-    badge: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
-    border: "border-amber-200 dark:border-amber-900",
-    header: "text-amber-700 dark:text-amber-300",
+    badge: "bg-amber-500/20 text-amber-300",
+    border: "border-amber-500/30",
+    header: "text-amber-400",
   },
   vertical_specialist: {
-    badge: "bg-teal-100 text-teal-900 dark:bg-teal-950 dark:text-teal-200",
-    border: "border-teal-200 dark:border-teal-900",
-    header: "text-teal-700 dark:text-teal-300",
+    badge: "bg-teal-500/20 text-teal-300",
+    border: "border-teal-500/30",
+    header: "text-teal-400",
   },
 };
 

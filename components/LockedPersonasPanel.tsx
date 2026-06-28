@@ -13,6 +13,9 @@ import {
   type PersonaSegment,
 } from "../lib/segments";
 import { PersonaCard } from "./PersonaCard";
+import { Button } from "./ui/Button";
+import { Panel, PanelBody } from "./ui/Panel";
+import { SectionHeader } from "./ui/SectionHeader";
 
 export function LockedPersonasPanel() {
   const [isEnriching, setIsEnriching] = useState(false);
@@ -56,68 +59,69 @@ export function LockedPersonasPanel() {
   }
 
   return (
-    <section className="w-full space-y-4">
-      <div className="space-y-2">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Locked demo personas
-        </h2>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Six real profiles grouped by segment — the same tags hour 6&apos;s graph
-          will cluster on.
-        </p>
-        <p className="text-xs text-zinc-500">
+    <Panel id="personas">
+      <PanelBody className="space-y-6">
+        <SectionHeader
+          step={2}
+          title="Digital twin personas"
+          description="Six real profiles across three segments — enriched with funding, pain signals, and intent."
+          action={
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleEnrich}
+              disabled={anyLoading}
+            >
+              {anyLoading ? "Enriching…" : "Enrich all"}
+            </Button>
+          }
+        />
+
+        <p className="rounded-xl bg-cream px-4 py-3 text-xs text-stone-500">
           {LOCKED_DEMO_PERSONAS.map((p) => p.personName).join(" · ")}
         </p>
-      </div>
 
-      <button
-        type="button"
-        onClick={handleEnrich}
-        disabled={anyLoading}
-        className="w-full rounded-full border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-900"
-      >
-        {anyLoading ? "Enriching personas…" : "Enrich locked personas"}
-      </button>
+        {clientError && (
+          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {clientError}
+          </p>
+        )}
 
-      {clientError && (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-          {clientError}
-        </p>
-      )}
-
-      {lockedPersonas === undefined ? (
-        <p className="text-sm text-zinc-500">Loading personas…</p>
-      ) : lockedPersonas.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-zinc-300 px-4 py-6 text-sm text-zinc-500 dark:border-zinc-700">
-          Click &ldquo;Enrich locked personas&rdquo; to seed and enrich the six
-          demo profiles.
-        </p>
-      ) : grouped ? (
-        <div className="space-y-8">
-          {SEGMENT_ORDER.map((segment) => {
-            const leads = grouped[segment];
-            if (leads.length === 0) return null;
-            const styles = SEGMENT_STYLES[segment];
-            return (
-              <div key={segment} className="space-y-3">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className={`text-sm font-semibold ${styles.header}`}>
-                    {SEGMENT_LABELS[segment]}
-                  </h3>
-                  <span className="text-xs text-zinc-500">
-                    {SEGMENT_DESCRIPTIONS[segment]} · {leads.length}
-                  </span>
+        {lockedPersonas === undefined ? (
+          <p className="text-sm text-stone-500">Loading personas…</p>
+        ) : lockedPersonas.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-stone-800 bg-cream px-6 py-10 text-center">
+            <p className="text-sm text-stone-500">
+              Hit &ldquo;Enrich all&rdquo; to seed and enrich the demo profiles.
+            </p>
+          </div>
+        ) : grouped ? (
+          <div className="space-y-8">
+            {SEGMENT_ORDER.map((segment) => {
+              const leads = grouped[segment];
+              if (leads.length === 0) return null;
+              const styles = SEGMENT_STYLES[segment];
+              return (
+                <div key={segment} className="space-y-4">
+                  <div className="flex items-center justify-between gap-2 border-b border-stone-800/60 pb-3">
+                    <h3 className={`text-sm font-semibold ${styles.header}`}>
+                      {SEGMENT_LABELS[segment]}
+                    </h3>
+                    <span className="text-xs text-stone-400">
+                      {SEGMENT_DESCRIPTIONS[segment]} · {leads.length}
+                    </span>
+                  </div>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {leads.map((lead) => (
+                      <PersonaCard key={lead._id} lead={lead} />
+                    ))}
+                  </div>
                 </div>
-                <div className="grid gap-4">
-                  {leads.map((lead) => (
-                    <PersonaCard key={lead._id} lead={lead} />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-    </section>
+              );
+            })}
+          </div>
+        ) : null}
+      </PanelBody>
+    </Panel>
   );
 }

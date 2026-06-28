@@ -8,7 +8,13 @@ import {
   deriveGraphPersonas,
 } from "../lib/swarmGraphData";
 import { DEFAULT_SWARM_DRAFT } from "../lib/swarmDraft";
+import { ScoreCard } from "./ScoreCard";
+import { SegmentRewritesPanel } from "./SegmentRewritesPanel";
+import { SendWinningVariantsPanel } from "./SendWinningVariantsPanel";
 import { SwarmGraph } from "./SwarmGraph";
+import { Button } from "./ui/Button";
+import { Panel, PanelBody, PanelDivider } from "./ui/Panel";
+import { SectionHeader } from "./ui/SectionHeader";
 
 export function SwarmTestPanel() {
   const [draftMessage, setDraftMessage] = useState(DEFAULT_SWARM_DRAFT);
@@ -58,74 +64,93 @@ export function SwarmTestPanel() {
   }
 
   return (
-    <section className="w-full space-y-4">
-      <div className="space-y-2">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Swarm test (hour 6)
-        </h2>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Run the reasoning engine against all locked personas. Round 1 is each
-          agent&apos;s solo take; optionally run round 2 for peer influence within
-          segments. Toggle rounds on the graph after a run.
-        </p>
-      </div>
-
-      <textarea
-        value={draftMessage}
-        onChange={(e) => setDraftMessage(e.target.value)}
-        rows={12}
-        className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 font-mono text-sm text-zinc-900 shadow-sm focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-        placeholder="Paste your draft cold email…"
-      />
-
-      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-        <input
-          type="checkbox"
-          checked={includeRound2}
-          onChange={(e) => setIncludeRound2(e.target.checked)}
-          disabled={isRunning}
-          className="mt-0.5 h-4 w-4 rounded border-zinc-300"
+    <Panel id="swarm">
+      <PanelBody className="space-y-8">
+        <SectionHeader
+          step={3}
+          title="Run the swarm"
+          description="Fire your draft at every persona. See how each segment reacts — solo first, then with peer influence."
         />
-        <span className="text-sm text-zinc-700 dark:text-zinc-300">
-          <span className="font-medium text-zinc-900 dark:text-zinc-100">
-            Include round 2 (peer influence)
+
+        <div className="space-y-4">
+          <label className="block text-sm font-medium text-stone-300">
+            Outbound draft
+          </label>
+          <textarea
+            value={draftMessage}
+            onChange={(e) => setDraftMessage(e.target.value)}
+            rows={10}
+            className="w-full rounded-xl border border-stone-800 bg-cream px-4 py-3.5 font-mono text-[13px] leading-relaxed text-stone-200 shadow-inner shadow-black/20 outline-none transition focus:border-brand-blue focus:ring-2 focus:ring-brand-blue/10"
+            placeholder="Paste your cold email draft…"
+          />
+        </div>
+
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-stone-800 bg-cream/60 px-4 py-3.5">
+          <input
+            type="checkbox"
+            checked={includeRound2}
+            onChange={(e) => setIncludeRound2(e.target.checked)}
+            disabled={isRunning}
+            className="mt-0.5 h-4 w-4 rounded border-stone-700"
+          />
+          <span className="text-sm">
+            <span className="font-medium text-stone-100">
+              Include peer influence (round 2)
+            </span>
+            <span className="mt-0.5 block text-stone-500">
+              Agents re-evaluate after seeing how others in their segment reacted.
+            </span>
           </span>
-          <span className="mt-0.5 block text-zinc-500">
-            Agents re-evaluate after seeing how others in their segment reacted.
-            Uncheck to stop after round 1 solo reactions.
-          </span>
-        </span>
-      </label>
+        </label>
 
-      <button
-        type="button"
-        onClick={handleRunSwarm}
-        disabled={isRunning || !draftMessage.trim()}
-        className="w-full rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-      >
-        {isRunning ? "Running swarm…" : "Run swarm"}
-      </button>
+        <Button
+          type="button"
+          fullWidth
+          onClick={handleRunSwarm}
+          disabled={isRunning || !draftMessage.trim()}
+        >
+          {isRunning ? "Running swarm…" : "Run swarm test"}
+        </Button>
 
-      {clientError && (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-          {clientError}
-        </p>
-      )}
+        {clientError && (
+          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {clientError}
+          </p>
+        )}
 
-      {isStreaming && (
-        <p className="text-sm text-zinc-500">
-          Agents thinking… round 1: {round1}/{personaCount}
-          {includeRound2 ? ` · round 2: ${round2}/${personaCount}` : ""} · total{" "}
-          {reactions?.length ?? 0}/{totalExpected}
-        </p>
-      )}
+        {isStreaming && (
+          <div className="flex items-center gap-3 rounded-xl bg-brand-blue/10 px-4 py-3 text-sm text-brand-blue-light">
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-brand-blue/20 border-t-brand-blue" />
+            Round 1: {round1}/{personaCount}
+            {includeRound2 ? ` · Round 2: ${round2}/${personaCount}` : ""}
+          </div>
+        )}
 
-      <SwarmGraph
-        personas={lockedPersonas === undefined ? undefined : graphPersonas}
-        reactions={reactions}
-        isSwarmRunning={isStreaming}
-        emptyMessage="No locked personas found. Seed demo data first."
-      />
-    </section>
+        <SwarmGraph
+          personas={lockedPersonas === undefined ? undefined : graphPersonas}
+          reactions={reactions}
+          isSwarmRunning={isStreaming}
+          emptyMessage="Enrich personas above, then run the swarm."
+        />
+      </PanelBody>
+
+      <PanelDivider />
+
+      <PanelBody>
+        <ScoreCard />
+      </PanelBody>
+
+      <PanelDivider />
+
+      <PanelBody>
+        <SegmentRewritesPanel originalDraft={draftMessage} />
+      </PanelBody>
+
+      <PanelDivider />
+
+      <PanelBody>
+        <SendWinningVariantsPanel />
+      </PanelBody>
+    </Panel>
   );
 }

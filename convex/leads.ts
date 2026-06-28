@@ -110,6 +110,20 @@ export const listLockedPersonas = query({
   },
 });
 
+/** Non-locked leads for ambient graph density (visual only, no swarm). */
+export const listAmbientGraphLeads = query({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("leads").collect();
+    return all
+      .filter((lead) => lead.isLockedDemo !== true)
+      .map((lead) => ({
+        _id: lead._id,
+        personName: lead.personName,
+      }));
+  },
+});
+
 export const listLockedPersonasInternal = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -426,6 +440,16 @@ export const insertLead = internalMutation({
     if (run) {
       await ctx.db.patch(runId, { leadCount: run.leadCount + 1 });
     }
+  },
+});
+
+export const updateRunIcp = internalMutation({
+  args: {
+    runId: v.id("audienceRuns"),
+    icp: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.runId, { icp: args.icp.trim() });
   },
 });
 

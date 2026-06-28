@@ -83,12 +83,34 @@ export default defineSchema({
     sentiment: agentSentiment,
     reasoningText: v.string(),
     citedSignal: v.string(),
-    /** 1 = initial solo reaction; 2 = peer-influence re-evaluation (hour 6.5). */
-    round: v.optional(v.union(v.literal(1), v.literal(2))),
+    /** 1 = solo; 2 = peer influence; 3 = rewritten-variant re-test (hour 8). */
+    round: v.optional(v.union(v.literal(1), v.literal(2), v.literal(3))),
     createdAt: v.number(),
   })
     .index("by_leadId", ["leadId"])
     .index("by_segment", ["segment"])
     .index("by_leadId_createdAt", ["leadId", "createdAt"])
     .index("by_leadId_round", ["leadId", "round"]),
+
+  /** Hour 8 — segment-specific rewritten drafts from Cursor SDK / OpenAI fallback. */
+  segment_rewrites: defineTable({
+    segment: personaSegment,
+    rewrittenDraft: v.string(),
+    basedOnSignals: v.array(v.string()),
+    generatedVia: v.union(v.literal("cursor_sdk"), v.literal("openai_fallback")),
+    createdAt: v.number(),
+  }).index("by_segment", ["segment"]),
+
+  /** Hour 9 — opt-in demo send log (Orange Slice real send). */
+  sent_log: defineTable({
+    recipientEmail: v.string(),
+    recipientLabel: v.optional(v.string()),
+    segment: personaSegment,
+    subject: v.string(),
+    bodyPreview: v.string(),
+    success: v.boolean(),
+    errorMessage: v.optional(v.string()),
+    messageId: v.optional(v.string()),
+    sentAt: v.number(),
+  }).index("by_sentAt", ["sentAt"]),
 });

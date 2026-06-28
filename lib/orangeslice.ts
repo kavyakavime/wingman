@@ -5,12 +5,22 @@
  * @see node_modules/orangeslice/docs/services/ai/generateObject.ts
  */
 
-import { services, withApiKey } from "orangeslice";
+import { integrations, services, withApiKey } from "orangeslice";
+import { post } from "orangeslice/dist/api";
+import { plainTextToHtml } from "./parseRewriteDraft";
+import { GmailDirectError, gmailDirectConfigured, sendViaGmailDirect } from "./gmailDirect";
 
 export class OrangeSliceApiError extends Error {
   constructor(
     message: string,
-    public readonly code: "missing_api_key" | "api_error",
+    public readonly code:
+      | "missing_api_key"
+      | "auth_failure"
+      | "invalid_recipient"
+      | "rate_limit"
+      | "integration_not_connected"
+      | "api_error",
+    public readonly status?: number,
   ) {
     super(message);
     this.name = "OrangeSliceApiError";
@@ -186,4 +196,240 @@ ${context}`,
       intentScore,
     };
   });
+}
+
+function classifySendError(message: string, status?: number): OrangeSliceApiError {
+  const lower = message.toLowerCase();
+
+  if (isIntegrationNotConnected(message)) {
+    return new OrangeSliceApiError(
+      `${message} Connect Gmail with integrations.connect("gmail") — run \`npm run connect:gmail\`. OAuth only; do not use dashboard "+ Add Key" for Gmail.`,
+      "integration_not_connected",
+      status,
+    );
+  }
+
+  if (lower.includes("composio")) {
+    return new OrangeSliceApiError(
+      `${message} Reconnect Gmail with integrations.connect("gmail") (\`npm run connect:gmail\`) — dashboard "Connected" can show before OAuth completes.`,
+      "api_error",
+      status,
+    );
+  }
+
+  if (
+    status === 401 ||
+    status === 403 ||
+    lower.includes("unauthorized") ||
+    lower.includes("invalid api key")
+  ) {
+    return new OrangeSliceApiError(
+      `Orange Slice auth failed: ${message}`,
+      "auth_failure",
+      status,
+    );
+  }
+
+  if (status === 429 || lower.includes("rate limit") || lower.includes("too many requests")) {
+    return new OrangeSliceApiError(
+      `Orange Slice rate limit: ${message}`,
+      "rate_limit",
+      status,
+    );
+  }
+
+  if (
+    status === 400 &&
+    (lower.includes("recipient") ||
+      lower.includes("invalid email") ||
+      lower.includes("email address"))
+  ) {
+    return new OrangeSliceApiError(
+      `Invalid recipient: ${message}`,
+      "invalid_recipient",
+      status,
+    );
+  }
+
+  return new OrangeSliceApiError(message, "api_error", status);
+}
+
+function parsePostError(error: unknown): OrangeSliceApiError {
+  if (error instanceof OrangeSliceApiError) return error;
+
+  const message = error instanceof Error ? error.message : String(error);
+  const statusMatch = message.match(/:\s(\d{3})\s/);
+  const status = statusMatch ? Number(statusMatch[1]) : undefined;
+  return classifySendError(message, status);
+}
+
+function isIntegrationNotConnected(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("no active gmail integration") ||
+    lower.includes("integration not connected") ||
+    lower.includes("not connected")
+  );
+}
+
+function isManagedEmailUnavailable(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("not found") || message.includes("404");
+}
+
+function isOrangeSliceGmailBroken(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("composio") ||
+    isIntegrationNotConnected(message) ||
+    lower.includes("/execute/integration")
+  );
+}
+
+async function sendViaOrangeSliceGmail(
+  to: string,
+  subject: string,
+  body: string,
+): Promise<{ messageId?: string }> {
+  const { integrations: rows } = (await integrations.list({ provider: "gmail" })) as {
+    integrations?: Array<{ id?: string }>;
+  };
+  const gmailIntegration = rows?.[0];
+
+  const payload = {
+    provider: "gmail" as const,
+    method: "sendEmail" as const,
+    args: [
+      {
+        recipient_email: to,
+        subject,
+        body,
+        is_html: false,
+      },
+    ],
+    ...(gmailIntegration?.id ? { integrationId: gmailIntegration.id } : {}),
+  };
+
+  const gmailResult = (await post("/execute/integration", payload)) as {
+    successful?: boolean;
+    error?: string;
+    data?: unknown;
+  };
+
+  if (gmailResult.successful === false) {
+    throw new OrangeSliceApiError(
+      gmailResult.error ?? "Gmail send returned unsuccessful",
+      "api_error",
+    );
+  }
+
+  const data = gmailResult.data as { id?: string; messageId?: string } | undefined;
+  return { messageId: data?.messageId ?? data?.id };
+}
+
+/**
+ * Send a real outreach email via Orange Slice.
+ *
+ * Per Orange Slice docs there are two send paths:
+ *
+ * 1. **Gmail (primary for outreach)** — `integrations.gmail.sendEmail({ recipient_email, subject, body })`
+ *    after `integrations.connect("gmail")`. See docs/integrations/gmail/sendEmail.md.
+ *    Rate limit: 40 sends/day per connected Gmail account.
+ *
+ * 2. **Managed notification sender (fallback)** — `POST /execute/email` with `{ to, subject, html }`.
+ *    Orange Slice's managed Resend identity; 0 credits. See docs/services/email/send.ts.
+ *    Not exported on `services.*` in SDK v2.6.0 — call via `post()`.
+ */
+export async function sendOutreach(
+  toEmail: string,
+  subject: string,
+  body: string,
+  apiKey: string,
+): Promise<{ messageId?: string; via: "managed_email" | "gmail" | "gmail_direct" }> {
+  const to = toEmail.trim();
+  if (!apiKey.trim()) {
+    throw new OrangeSliceApiError(
+      "ORANGESLICE_API_KEY is not configured. Set it with: npx convex env set ORANGESLICE_API_KEY your_key",
+      "missing_api_key",
+    );
+  }
+  if (!to || !to.includes("@")) {
+    throw new OrangeSliceApiError(
+      `Invalid recipient email: "${toEmail}"`,
+      "invalid_recipient",
+    );
+  }
+  if (!subject.trim()) {
+    throw new OrangeSliceApiError("Subject cannot be empty.", "api_error");
+  }
+  if (!body.trim()) {
+    throw new OrangeSliceApiError("Body cannot be empty.", "api_error");
+  }
+
+  try {
+    return await withApiKey(apiKey.trim(), async () => {
+      const html = plainTextToHtml(body);
+      const trimmedSubject = subject.trim();
+      const trimmedBody = body.trim();
+
+      // Primary: Orange Slice Gmail (docs/integrations/gmail/sendEmail.md)
+      try {
+        const gmailSend = await sendViaOrangeSliceGmail(to, trimmedSubject, trimmedBody);
+        return {
+          messageId: gmailSend.messageId,
+          via: "gmail" as const,
+        };
+      } catch (gmailError) {
+        const gmailMessage =
+          gmailError instanceof Error ? gmailError.message : String(gmailError);
+
+        // Fallback 1: managed transactional sender (docs/services/email/send.ts)
+        if (!isIntegrationNotConnected(gmailMessage)) {
+          try {
+            const result = (await post("/execute/email", {
+              to,
+              subject: trimmedSubject,
+              html,
+            })) as { id?: string; messageId?: string };
+            return {
+              messageId: result.messageId ?? result.id,
+              via: "managed_email" as const,
+            };
+          } catch (managedError) {
+            const managedMessage =
+              managedError instanceof Error ? managedError.message : String(managedError);
+            if (!isManagedEmailUnavailable(managedMessage)) {
+              throw managedError;
+            }
+          }
+        }
+
+        // Fallback 2: direct Gmail SMTP when Orange Slice Composio bridge is down
+        if (isOrangeSliceGmailBroken(gmailMessage) && gmailDirectConfigured()) {
+          const direct = await sendViaGmailDirect(to, trimmedSubject, trimmedBody);
+          return {
+            messageId: direct.messageId,
+            via: "gmail_direct" as const,
+          };
+        }
+
+        const connectHint =
+          "Connect Gmail: `npm run connect:gmail`. " +
+          "If Orange Slice still fails (Composio 401), set GMAIL_USER + GMAIL_APP_PASSWORD in Convex env — " +
+          "Google Account → Security → App passwords → create one for Wingman, then: " +
+          "`npx convex env set GMAIL_USER you@gmail.com` and `npx convex env set GMAIL_APP_PASSWORD 'xxxx xxxx xxxx xxxx'`.";
+
+        if (isIntegrationNotConnected(gmailMessage)) {
+          throw new OrangeSliceApiError(
+            `${gmailMessage} ${connectHint}`,
+            "integration_not_connected",
+          );
+        }
+
+        throw gmailError;
+      }
+    });
+  } catch (error) {
+    throw parsePostError(error);
+  }
 }
